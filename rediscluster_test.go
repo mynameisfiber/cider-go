@@ -9,15 +9,16 @@ import (
 
 func TestRedisCluster(t *testing.T) {
     N := 10
-    rc := new(RedisCluster)
     
-    success := true
-    success = success && rc.AddShard(&RedisShard{Id:1, Host: "localhost", Port: 6379, Db: 1})
-    success = success && rc.AddShard(&RedisShard{Id:1, Host: "localhost", Port: 6379, Db: 2})
-    success = success && rc.AddShard(&RedisShard{Id:1, Host: "localhost", Port: 6379, Db: 3})
-    success = success && rc.AddShard(&RedisShard{Id:1, Host: "localhost", Port: 6379, Db: 4})
-    if !success {
-        t.Fatalf("Could not add shards")
+    group1 := NewRedisShardGroup(1, &RedisShard{Id:1, Host: "127.0.0.1", Port: 6379, Db: 1}, &RedisShard{Id:2, Host: "127.0.0.1", Port: 6379, Db: 2})
+    group2 := NewRedisShardGroup(2, &RedisShard{Id:3, Host: "127.0.0.1", Port: 6379, Db: 3}, &RedisShard{Id:4, Host: "127.0.0.1", Port: 6379, Db: 4})
+    group3 := NewRedisShardGroup(3, &RedisShard{Id:5, Host: "127.0.0.1", Port: 6379, Db: 5}, &RedisShard{Id:6, Host: "127.0.0.1", Port: 6379, Db: 6})
+    group4 := NewRedisShardGroup(4, &RedisShard{Id:8, Host: "127.0.0.1", Port: 6379, Db: 8}, &RedisShard{Id:7, Host: "127.0.0.1", Port: 6379, Db: 7})
+
+    rc := NewRedisCluster(group1, group2, group3, group4)
+
+    if rc == nil {
+        t.Fatalf("Could not create redis cluster")
     }
 
     start := rc.Start()
@@ -34,7 +35,10 @@ func TestRedisCluster(t *testing.T) {
 
     pipeline := rc.Pipeline()
     for i := 0; i < N; i++ {
-        pipeline.Send("GET", fmt.Sprintf("TEST_%d", i))
+        err := pipeline.Send("GET", fmt.Sprintf("TEST_%d", i))
+        if err != nil {
+            t.Fatalf("Could not send to pipeline: %s: %s", fmt.Sprintf("TEST_%d", i), err)
+        }
     }
     result := pipeline.Execute()
     if len(result) != N {

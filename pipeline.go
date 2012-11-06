@@ -8,52 +8,55 @@ type RedisClusterPipeline struct {
 	cluster     *RedisCluster
 	numRequests uint
 	numRecieved uint
-	ordering    []uint32
-	shardsUsed  map[uint32]bool
+	ordering    [][2]uint32
+	shardGroupsUsed  map[[2]uint32]bool
 }
 
 func NewRedisClusterPipeline(cluster *RedisCluster) *RedisClusterPipeline {
-	rcp := &RedisClusterPipeline{
+	rcp := RedisClusterPipeline{
 		cluster:    cluster,
-		shardsUsed: make(map[uint32]bool),
+		shardGroupsUsed: make(map[[2]uint32]bool),
 	}
-	return rcp
+	return &rcp
 }
 
 func (rcp *RedisClusterPipeline) Send(cmd string, args ...interface{}) error {
-	client, id := rcp.cluster.Partition(args[0].(string))
-	if _, ok := rcp.shardsUsed[id]; !ok {
-		client.rdb.Send("MULTI")
+	group, groupId := rcp.cluster.Partition(args[0].(string))
+    shard, shardId := group.GetNextShard()
+    dbId := [2]uint32{groupId, shardId}
+	if _, ok := rcp.shardGroupsUsed[dbId]; !ok {
+		shard.rdb.Send("MULTI")
 	}
-	err := client.rdb.Send(cmd, args...)
+	err := shard.rdb.Send(cmd, args...)
 	if err != nil {
 		return err
 	}
-	rcp.ordering = append(rcp.ordering, id)
-	rcp.shardsUsed[id] = true
+	rcp.ordering = append(rcp.ordering, [2]uint32{groupId, shardId})
+	rcp.shardGroupsUsed[dbId] = true
 	rcp.numRequests += 1
 	return nil
 }
 
 func (rcp *RedisClusterPipeline) Execute() []interface{} {
-	data := make(map[uint32][]interface{})
-	indexes := make(map[uint32]int)
+	data := make(map[[2]uint32][]interface{})
+	indexes := make(map[[2]uint32]int)
 	var err error
-	for id, _ := range rcp.shardsUsed {
-		data[id], err = redis.MultiBulk(rcp.cluster.Shards[id].rdb.Do("EXEC"))
-		if err != nil {
-			data[id] = nil
-		} else {
-			indexes[id] = 0
-		}
+	for dbId, _ := range rcp.shardGroupsUsed {
+        groupId, shardId := dbId[0], dbId[1]
+	    data[dbId], err = redis.MultiBulk(rcp.cluster.ShardGroups[groupId].Shards[shardId].rdb.Do("EXEC"))
+	    if err != nil {
+	    	data[dbId] = nil
+	    } else {
+	    	indexes[dbId] = 0
+	    }
 	}
 
 	results := make([]interface{}, rcp.numRequests)
-	for index, shardId := range rcp.ordering[rcp.numRecieved:] {
-		dataIndex, ok := indexes[shardId]
-		if data[shardId] != nil && ok {
-			results[index] = data[shardId][dataIndex]
-			indexes[shardId] += 1
+	for index, dbId := range rcp.ordering[rcp.numRecieved:] {
+		dataIndex, ok := indexes[dbId]
+		if data[dbId] != nil && ok {
+			results[index] = data[dbId][dataIndex]
+			indexes[dbId] += 1
 		}
 	}
 	rcp.numRecieved = rcp.numRequests
