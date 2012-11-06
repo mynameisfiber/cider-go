@@ -20,8 +20,7 @@ func TestRedisCluster(t *testing.T) {
 		t.Fatalf("Could not create redis cluster")
 	}
 
-	start := rc.Start()
-	if start != CLUSTER_READY {
+	if rc.Status != CLUSTER_READY {
 		t.Fatalf("Could not connect to servers")
 	}
 
