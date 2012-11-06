@@ -1,7 +1,7 @@
 package rediscluster
 
 import (
-    "fmt"
+	"fmt"
 	"hash/crc32"
 )
 
@@ -20,14 +20,14 @@ type RedisCluster struct {
 }
 
 func NewRedisCluster(redisShardGroups ...*RedisShardGroup) *RedisCluster {
-    rc := RedisCluster{}
-    for idx := range redisShardGroups {
-        if ! rc.AddShardGroup(redisShardGroups[idx]) {
-            return nil
-        }
-    }
-    rc.Start()
-    return &rc
+	rc := RedisCluster{}
+	for idx := range redisShardGroups {
+		if !rc.AddShardGroup(redisShardGroups[idx]) {
+			return nil
+		}
+	}
+	rc.Start()
+	return &rc
 }
 
 func (rc *RedisCluster) Pipeline() *RedisClusterPipeline {
@@ -44,15 +44,15 @@ func (rc *RedisCluster) AddShardGroup(shard *RedisShardGroup) bool {
 }
 
 func (rc *RedisCluster) Start() int {
-    rc.initialized = true
-    rc.Status = rc.GetStatus()
-    return rc.Status
+	rc.initialized = true
+	rc.Status = rc.GetStatus()
+	return rc.Status
 }
 
 func (rc *RedisCluster) Stop() int {
-    rc.initialized = false
-    rc.Status = rc.GetStatus()
-    return rc.Status
+	rc.initialized = false
+	rc.Status = rc.GetStatus()
+	return rc.Status
 }
 
 func (rc *RedisCluster) GetStatus() int {
@@ -84,9 +84,9 @@ func (rc *RedisCluster) Partition(key string) (*RedisShardGroup, uint32) {
 }
 
 func (rc *RedisCluster) Do(cmd string, args ...interface{}) (interface{}, error) {
-    if !rc.initialized {
-        return nil, fmt.Errorf("RedisCluster not initialized")
-    }
+	if !rc.initialized {
+		return nil, fmt.Errorf("RedisCluster not initialized")
+	}
 	db, _ := rc.Partition(args[0].(string))
 	response, err := db.Do(cmd, args...)
 	return response, err

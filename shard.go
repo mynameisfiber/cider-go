@@ -34,7 +34,7 @@ func (rs *RedisShard) Connect() int {
 			rs.LastError = err
 		} else {
 			rs.Status = REDIS_CONNECTED
-            log.Printf("[shard %d] Connected on %s:%d:%d", rs.Id, rs.Host, rs.Port, rs.Db)
+			log.Printf("[shard %d] Connected on %s:%d:%d", rs.Id, rs.Host, rs.Port, rs.Db)
 		}
 	} else {
 		log.Printf("[shard %d] Could not connect: %s", rs.Id, err)
