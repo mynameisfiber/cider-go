@@ -25,9 +25,9 @@ func (rcp *RedisClusterPipeline) Send(cmd string, args ...interface{}) error {
 	shard, shardId := group.GetNextShard()
 	dbId := [2]uint32{groupId, shardId}
 	if _, ok := rcp.shardGroupsUsed[dbId]; !ok {
-		shard.rdb.Send("MULTI")
+		shard.Send("MULTI")
 	}
-	err := shard.rdb.Send(cmd, args...)
+	err := shard.Send(cmd, args...)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func (rcp *RedisClusterPipeline) Execute() []interface{} {
 	var err error
 	for dbId, _ := range rcp.shardGroupsUsed {
 		groupId, shardId := dbId[0], dbId[1]
-		data[dbId], err = redis.MultiBulk(rcp.cluster.ShardGroups[groupId].Shards[shardId].rdb.Do("EXEC"))
+		data[dbId], err = redis.MultiBulk(rcp.cluster.ShardGroups[groupId].Shards[shardId].Do("EXEC"))
 		if err != nil {
 			data[dbId] = nil
 		} else {

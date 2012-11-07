@@ -153,7 +153,7 @@ func (rsg *RedisShardGroup) Do(cmd string, args ...interface{}) (interface{}, er
 		var response interface{}
 		for _, shard := range rsg.Shards {
 			// TODO: Right now we only capture the last response and the last error... what is a good fix?
-			response, err = shard.rdb.Do(cmd, args...)
+			response, err = shard.Do(cmd, args...)
 			if err != nil {
 				finalError = err
 			}
@@ -162,7 +162,7 @@ func (rsg *RedisShardGroup) Do(cmd string, args ...interface{}) (interface{}, er
 	} else {
 		// TODO: deal with shards that are down
 		db, _ := rsg.GetNextShard()
-		response, err := db.rdb.Do(cmd, args...)
+		response, err := db.Do(cmd, args...)
 		return response, err
 	}
 	return nil, fmt.Errorf("Unknown error")
