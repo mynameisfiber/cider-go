@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"testing"
+    "log"
 )
 
 func TestRedisCluster(t *testing.T) {
-	N := 1000
+	N := 5
 
 	group1 := NewRedisShardGroup(1, NewRedisShard(1, "127.0.0.1", 6379, 1), NewRedisShard(2, "127.0.0.1", 6379, 2))
 	group2 := NewRedisShardGroup(2, NewRedisShard(3, "127.0.0.1", 6379, 3), NewRedisShard(4, "127.0.0.1", 6379, 4))
@@ -25,6 +26,7 @@ func TestRedisCluster(t *testing.T) {
 	}
 
 	for i := 0; i < N; i++ {
+        log.Printf("Setting element %d", i)
 		_, err := rc.Do(MessageFromString(fmt.Sprintf("SET TEST_%d %d", i, i)))
 		if err != nil {
 			t.Fatalf("Could not set value TEST_%d: %s", i, err)

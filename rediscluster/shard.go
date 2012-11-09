@@ -2,6 +2,7 @@ package rediscluster
 
 import (
 	"fmt"
+    "log"
 )
 
 const (
@@ -41,7 +42,7 @@ func (rs *RedisShard) GetStatus() uint32 {
     }
 
     reply, err := rs.Conn.ReadMessage()
-	if err != nil || reply.Message.String() != "+PONG\r\n" {
+	if err != nil || string(reply.Message) != "+PONG\r\n" {
 		rs.Status = REDIS_DISCONNECTED
 	} else {
 		if rs.Status != REDIS_READONLY && rs.Status != REDIS_WRITEONLY {
@@ -64,10 +65,12 @@ func (rs *RedisShard) Do(req *RedisMessage) (*RedisMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-    _, err = rs.Conn.WriteMessage(req)
+    log.Printf("[shard %d] Do'ing on command: %s %s", rs.Id, req.Command, req.Key)
+    _, err = rs.Conn.WriteBytes(req.Message)
     if err != nil {
         return nil, err
     }
+    log.Printf("[shard %d] Reading on command: %s %s", rs.Id, req.Command, req.Key)
     return rs.Conn.ReadMessage()
 }
 
@@ -76,7 +79,7 @@ func (rs *RedisShard) Send(req *RedisMessage) error {
 	if err != nil {
 		return err
 	}
-    _, err = rs.Conn.WriteMessage(req)
+    _, err = rs.Conn.WriteBytes(req.Message)
     return err
 }
 

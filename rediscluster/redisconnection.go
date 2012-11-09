@@ -29,16 +29,17 @@ func NewRedisConnection(host string, port, db int) (*RedisConnection, error) {
     return &rc, err
 }
 
-func (rc *RedisConnection) WriteMessage(message *RedisMessage) (int64, error) {
-    n, err := io.Copy(rc.bw, message.Message)
+func (rc *RedisConnection) WriteMulti() (int64, error) {
+    log.Printf("Writing multi")
+    n, err := rc.bw.Write([]byte("*1\r\n$5\r\nMULTI\r\n"))
     if err != nil {
         return 0, err
     }
-    rc.pending += 1
-    return n, nil
+    return int64(n), nil
 }
 
 func (rc *RedisConnection) WriteBytes(message []byte) (int64, error) {
+    log.Printf("Writing message: %s", message)
     n, err := rc.bw.Write(message)
     if err != nil {
         return 0, err
@@ -68,32 +69,25 @@ func (rc *RedisConnection) Connect() error {
 }
 
 func (rc *RedisConnection) SelectDb() error {
-    dbString := strconv.Itoa(rc.Db)
-    p := []byte(fmt.Sprintf("$2\r\n$6\r\nSELECT\r\n$%d\r\n%s\r\n", len(dbString), dbString))
-    message := &RedisMessage{Message: bytes.NewBuffer(p), Command: []byte("SELECT")}
-
-    _, err := rc.WriteMessage(message)
+    message := MessageFromString(fmt.Sprintf("SELECT %d", rc.Db))
+    _, err := rc.WriteBytes(message.Message)
     if err != nil {
         return err
     }
 
-    log.Printf("Wrote message... waiting for reply")
     response, err := rc.ReadMessage()
-    log.Printf("Got response: %s", response)
     if err != nil {
         return err
     }
 
-    if response.Message.String() != "+OK\r\n" {
+    if string(response.Message) != "+OK\r\n" {
         return fmt.Errorf("Could not switch databases")
     }
     return nil
 }
 
 func (rc *RedisConnection) readLine() ([]byte, error) {
-    log.Println("starting read")
 	p, err := rc.br.ReadSlice('\n')
-    log.Printf("Found: %s", p)
 	if err == bufio.ErrBufferFull {
 		return nil, fmt.Errorf("long response line")
 	}
@@ -108,33 +102,36 @@ func (rc *RedisConnection) readLine() ([]byte, error) {
 }
 
 func (rc *RedisConnection) ReadMessages() ([]*RedisMessage, error) {
-    messages := make([]*RedisMessage, rc.pending)
+    log.Printf("Doing %d reads", rc.pending+1)
+    messages := make([]*RedisMessage, 1)//rc.pending+1)
     i := 0
     var err error
-    for rc.pending > 0 {
+    for rc.pending >= 0 && len(messages) > i {
         messages[i], err = rc.ReadMessage()
         if err != nil {
             return nil, err
         }
+        i += 1
     }
     return messages, nil
 }
 
 func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
-	message := new(RedisMessage)
-	message.Message = new(bytes.Buffer)
+    rc.bw.Flush()
 
-	n := 1 // n gets changed with the first multi-bulk request
+	message := new(RedisMessage)
+
+    msgbuf := new(bytes.Buffer)
+	n := 0 // n gets changed with the first multi-bulk request
 	for i := 0; i <= n; i += 1 {
-        log.Printf("Reading message mofo")
 		line, err := rc.readLine()
-        log.Printf("n = %d, line = %s", n, line)
+        log.Printf("n = %d, line = %s, pending = %d", n, line, rc.pending)
         if err != nil {
             return nil, err
         }
 
-		message.Message.Write(line)
-		message.Message.Write(EOL)
+		msgbuf.Write(line)
+		msgbuf.Write(EOL)
 		switch line[0] {
 		case '+':
 		case '-':
@@ -147,9 +144,10 @@ func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
 			}
 			bulk := make([]byte, n)
 			_, err = io.ReadFull(rc.br, bulk)
+            log.Printf("(also just read '%s')", bulk)
 
-			message.Message.Write(bulk)
-			message.Message.Write(EOL)
+			msgbuf.Write(bulk)
+			msgbuf.Write(EOL)
 			if err != nil {
 				return nil, err
 			}
@@ -170,7 +168,8 @@ func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
 			}
 			break
 		case '*':
-			n, err = strconv.Atoi(string(line[1:]))
+            newN, err := strconv.Atoi(string(line[1:]))
+            n += newN
 			if err != nil || n < 0 {
 				return nil, err
 			}
@@ -181,6 +180,8 @@ func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
 	}
 
     rc.pending -= 1
+    log.Printf("Done with line!")
+    message.Message = msgbuf.Bytes()
 	return message, nil
 }
 

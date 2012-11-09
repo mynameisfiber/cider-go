@@ -154,6 +154,7 @@ func (rsg *RedisShardGroup) Do(req *RedisMessage) (*RedisMessage, error) {
 		var response *RedisMessage
 		for _, shard := range rsg.Shards {
 			// TODO: Right now we only capture the last response and the last error... what is a good fix?
+            //req.Message.  YOU HAVE TO REWIND THE FUCKING BUFFER
 			response, err = shard.Do(req)
 			if err != nil {
 				finalError = err

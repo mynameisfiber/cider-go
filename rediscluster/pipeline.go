@@ -1,16 +1,15 @@
 package rediscluster
 
 import (
-    "bytes"
 )
 
 var (
     MULTI = &RedisMessage{
-        Message: bytes.NewBuffer([]byte("*1\r\n$5\r\nMULTI\r\n")), 
+        Message: []byte("*1\r\n$5\r\nMULTI\r\n"), 
         Command: []byte("MULTI"),
     }
     EXEC = &RedisMessage{
-        Message: bytes.NewBuffer([]byte("*1\r\n$4\r\nEXEC\r\n")),
+        Message: []byte("*1\r\n$4\r\nEXEC\r\n"),
         Command: []byte("EXEC"),
     }
 )
@@ -36,7 +35,7 @@ func (rcp *RedisClusterPipeline) Send(message *RedisMessage) error {
 	shard, shardId := group.GetNextShard()
 	dbId := [2]uint32{groupId, shardId}
 	if _, ok := rcp.shardGroupsUsed[dbId]; !ok {
-		shard.Send(MULTI)
+		shard.Do(MULTI)
 	}
 	err := shard.Send(message)
 	if err != nil {

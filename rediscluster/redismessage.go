@@ -11,22 +11,24 @@ var (
 )
 
 type RedisMessage struct {
-	Message *bytes.Buffer
+    Message []byte
 	Command []byte
 	Key     []byte
 }
 
 func MessageFromString(input string) *RedisMessage {
-    msg := new(RedisMessage)
-    parts := strings.Split(input, " ")
+    message := RedisMessage{}
+    parts := strings.Fields(input)
+    msgbuf := new(bytes.Buffer)
 
-    msg.Message.WriteString(fmt.Sprintf("*%d\r\n", len(parts)))
+    msgbuf.WriteString(fmt.Sprintf("*%d\r\n", len(parts)))
     for _, comp := range strings.Split(input, " ") {
-        msg.Message.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(comp), comp))
+        msgbuf.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(comp), comp))
     }
 
-    msg.Command = []byte(parts[0])
-    msg.Key = []byte(parts[1])
+    message.Message = msgbuf.Bytes()
+    message.Command = []byte(parts[0])
+    message.Key = []byte(parts[1])
 
-    return msg
+    return &message
 }
