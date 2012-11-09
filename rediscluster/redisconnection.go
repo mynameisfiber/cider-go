@@ -121,16 +121,21 @@ func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
 
 	message := new(RedisMessage)
 
+    parts := make([][2]int, 1)
+    var start, end int
     msgbuf := new(bytes.Buffer)
 	n := 0 // n gets changed with the first multi-bulk request
 	for i := 0; i <= n; i += 1 {
+        end = start
 		line, err := rc.readLine()
         log.Printf("n = %d, line = %s, pending = %d", n, line, rc.pending)
         if err != nil {
             return nil, err
         }
 
+        start = msgbuf.Len()
 		msgbuf.Write(line)
+        end = msgbuf.Len()
 		msgbuf.Write(EOL)
 		switch line[0] {
 		case '+':
@@ -146,16 +151,12 @@ func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
 			_, err = io.ReadFull(rc.br, bulk)
             log.Printf("(also just read '%s')", bulk)
 
+            start = msgbuf.Len()
 			msgbuf.Write(bulk)
+            end = msgbuf.Len()
 			msgbuf.Write(EOL)
 			if err != nil {
 				return nil, err
-			}
-
-			if i == 1 {
-				message.Command = bulk
-			} else if i == 2 {
-				message.Key = bulk
 			}
 
 			// The following clears out the /r/n on this argument line
@@ -177,11 +178,18 @@ func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
 		default:
 			return nil, fmt.Errorf("Unpexected response line")
 		}
+        if start != end {
+            parts = append(parts, [2]int{start, end})
+        }
 	}
 
     rc.pending -= 1
     log.Printf("Done with line!")
     message.Message = msgbuf.Bytes()
+    message.Parts = make([][]byte, len(parts))
+    for i, part := range parts {
+        message.Parts[i] = message.Message[part[0]:part[1]] 
+    }
 	return message, nil
 }
 

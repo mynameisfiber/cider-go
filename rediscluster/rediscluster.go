@@ -87,7 +87,7 @@ func (rc *RedisCluster) Do(req *RedisMessage) (*RedisMessage, error) {
 	if !rc.initialized {
 		return nil, fmt.Errorf("RedisCluster not initialized")
 	}
-	db, _ := rc.Partition(string(req.Key))
+	db, _ := rc.Partition(string(req.Parts[1]))
 	response, err := db.Do(req)
 	return response, err
 }

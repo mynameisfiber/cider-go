@@ -4,14 +4,8 @@ import (
 )
 
 var (
-    MULTI = &RedisMessage{
-        Message: []byte("*1\r\n$5\r\nMULTI\r\n"), 
-        Command: []byte("MULTI"),
-    }
-    EXEC = &RedisMessage{
-        Message: []byte("*1\r\n$4\r\nEXEC\r\n"),
-        Command: []byte("EXEC"),
-    }
+    MULTI = MessageFromString("MULTI")
+    EXEC = MessageFromString("EXEC")
 )
 
 type RedisClusterPipeline struct {
@@ -31,14 +25,14 @@ func NewRedisClusterPipeline(cluster *RedisCluster) *RedisClusterPipeline {
 }
 
 func (rcp *RedisClusterPipeline) Send(message *RedisMessage) error {
-	group, groupId := rcp.cluster.Partition(string(message.Key))
+	group, groupId := rcp.cluster.Partition(string(message.Parts[1]))
 	shard, shardId := group.GetNextShard()
 	dbId := [2]uint32{groupId, shardId}
 	if _, ok := rcp.shardGroupsUsed[dbId]; !ok {
 		shard.Do(MULTI)
 	}
-	err := shard.Send(message)
-	if err != nil {
+	msg, err := shard.Do(message)
+	if err != nil || string(msg.Message) != "+QUEUED\r\n" {
 		return err
 	}
 	rcp.ordering = append(rcp.ordering, [2]uint32{groupId, shardId})
@@ -53,8 +47,7 @@ func (rcp *RedisClusterPipeline) Execute() []*RedisMessage {
 	var err error
 	for dbId, _ := range rcp.shardGroupsUsed {
 		groupId, shardId := dbId[0], dbId[1]
-        rcp.cluster.ShardGroups[groupId].Shards[shardId].Do(EXEC)
-		data[dbId], err = rcp.cluster.ShardGroups[groupId].Shards[shardId].Conn.ReadMessages()
+		data[dbId], err = rcp.cluster.ShardGroups[groupId].Shards[shardId].Do(EXEC)
 		if err != nil {
 			data[dbId] = nil
 		} else {

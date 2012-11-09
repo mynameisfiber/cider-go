@@ -61,21 +61,21 @@ func (rs *RedisShard) SetMode(mode uint32) error {
 }
 
 func (rs *RedisShard) Do(req *RedisMessage) (*RedisMessage, error) {
-	err := rs.canIssue(string(req.Command))
+	err := rs.canIssue(string(req.Parts[0]))
 	if err != nil {
 		return nil, err
 	}
-    log.Printf("[shard %d] Do'ing on command: %s %s", rs.Id, req.Command, req.Key)
+    log.Printf("[shard %d] Do'ing on command: %s %s", rs.Id, req.Parts[0], req.Parts[1])
     _, err = rs.Conn.WriteBytes(req.Message)
     if err != nil {
         return nil, err
     }
-    log.Printf("[shard %d] Reading on command: %s %s", rs.Id, req.Command, req.Key)
+    log.Printf("[shard %d] Reading on command: %s %s", rs.Id, req.Parts[0], req.Parts[1])
     return rs.Conn.ReadMessage()
 }
 
 func (rs *RedisShard) Send(req *RedisMessage) error {
-	err := rs.canIssue(string(req.Command))
+	err := rs.canIssue(string(req.Parts[0]))
 	if err != nil {
 		return err
 	}

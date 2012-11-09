@@ -12,8 +12,7 @@ var (
 
 type RedisMessage struct {
     Message []byte
-	Command []byte
-	Key     []byte
+    Parts [][]byte
 }
 
 func MessageFromString(input string) *RedisMessage {
@@ -27,8 +26,10 @@ func MessageFromString(input string) *RedisMessage {
     }
 
     message.Message = msgbuf.Bytes()
-    message.Command = []byte(parts[0])
-    message.Key = []byte(parts[1])
+    message.Parts = make([][]byte, len(parts))
+    for i, part := range parts {
+        message.Parts[i] = []byte(part)
+    }
 
     return &message
 }
