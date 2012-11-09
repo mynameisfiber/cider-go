@@ -83,11 +83,11 @@ func (rc *RedisCluster) Partition(key string) (*RedisShardGroup, uint32) {
 	return rc.ShardGroups[idx], idx
 }
 
-func (rc *RedisCluster) Do(cmd string, args ...interface{}) (interface{}, error) {
+func (rc *RedisCluster) Do(req *RedisMessage) (*RedisMessage, error) {
 	if !rc.initialized {
 		return nil, fmt.Errorf("RedisCluster not initialized")
 	}
-	db, _ := rc.Partition(args[0].(string))
-	response, err := db.Do(cmd, args...)
+	db, _ := rc.Partition(string(req.Key))
+	response, err := db.Do(req)
 	return response, err
 }

@@ -1,25 +1,16 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"io"
 	"log"
 	"net"
-	"strconv"
+    "bufio"
+    "./rediscluster"
 )
 
+var redisCluster *rediscluster.RedisCluster
 var (
-	EOL     = []byte("\r\n")
 	Clients = uint64(0)
 )
-
-type RedisRequest struct {
-	Request *bytes.Buffer
-	Command []byte
-	Key     []byte
-}
 
 type RedisClient struct {
 	Conn *net.Conn
@@ -36,81 +27,10 @@ func NewRedisClient(conn net.Conn) *RedisClient {
 	return &client
 }
 
-func (rc *RedisClient) readLine() ([]byte, error) {
-	p, err := rc.br.ReadSlice('\n')
-	if err == bufio.ErrBufferFull {
-		return nil, fmt.Errorf("long response line")
-	}
-	if err != nil {
-		return nil, err
-	}
-	i := len(p) - 2
-	if i < 0 || p[i] != '\r' {
-		return nil, fmt.Errorf("bad response line terminator")
-	}
-	return p[:i], nil
-}
-
-func (rc *RedisClient) readRequest() (*RedisRequest, error) {
-	request := new(RedisRequest)
-	request.Request = new(bytes.Buffer)
-
-	n := 1 // n gets changed with the first multi-bulk request
-	for i := 0; i < n; i += 1 {
-		line, err := rc.readLine()
-		request.Request.Write(line)
-		request.Request.Write(EOL)
-		switch line[0] {
-		case '+':
-		case '-':
-		case ':':
-			break
-		case '$':
-			n, err := strconv.Atoi(string(line[1:]))
-			if err != nil || n < 0 {
-				return nil, err
-			}
-			bulk := make([]byte, n)
-			_, err = io.ReadFull(rc.br, bulk)
-
-			request.Request.Write(bulk)
-			request.Request.Write(EOL)
-			if err != nil {
-				return nil, err
-			}
-
-			if i == 1 {
-				request.Command = bulk
-			} else if i == 2 {
-				request.Key = bulk
-			}
-
-			// The following clears out the /r/n on this argument line
-			line, err := rc.readLine()
-			if err != nil {
-				return nil, err
-			}
-			if len(line) != 0 {
-				return nil, fmt.Errorf("Bad bulk format")
-			}
-			break
-		case '*':
-			n, err = strconv.Atoi(string(line[1:]))
-			if err != nil || n < 0 {
-				return nil, err
-			}
-			break
-		default:
-			return nil, fmt.Errorf("Unpexected response line")
-		}
-	}
-	return request, nil
-}
-
 func (rc *RedisClient) Handle() error {
 	var err error
-	for request, err := rc.readRequest(); err == nil; {
-		log.Printf("Got command '%s' with key '%s'", string(request.Command), string(request.Key))
+	for request, err := rediscluster.ReadRequest(rc.br); err == nil; {
+        redisCluster.DoRequest(request)
 	}
 	return err
 }
@@ -121,6 +41,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not bind to address %s", netAddr)
 	}
+
+	group1 := rediscluster.NewRedisShardGroup(1, &rediscluster.RedisShard{Id: 1, Host: "127.0.0.1", Port: 6379, Db: 1}, &rediscluster.RedisShard{Id: 2, Host: "127.0.0.1", Port: 6379, Db: 2})
+	group2 := rediscluster.NewRedisShardGroup(2, &rediscluster.RedisShard{Id: 3, Host: "127.0.0.1", Port: 6379, Db: 3}, &rediscluster.RedisShard{Id: 4, Host: "127.0.0.1", Port: 6379, Db: 4})
+	group3 := rediscluster.NewRedisShardGroup(3, &rediscluster.RedisShard{Id: 5, Host: "127.0.0.1", Port: 6379, Db: 5}, &rediscluster.RedisShard{Id: 6, Host: "127.0.0.1", Port: 6379, Db: 6})
+	group4 := rediscluster.NewRedisShardGroup(4, &rediscluster.RedisShard{Id: 8, Host: "127.0.0.1", Port: 6379, Db: 8}, &rediscluster.RedisShard{Id: 7, Host: "127.0.0.1", Port: 6379, Db: 7})
+	redisCluster = rediscluster.NewRedisCluster(group1, group2, group3, group4)
+    log.Printf("Started redis clister")
+
 	log.Printf("Listening to connections on %s", netAddr)
 	for {
 		conn, err := ln.Accept()

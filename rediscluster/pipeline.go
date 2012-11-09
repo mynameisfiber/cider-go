@@ -1,7 +1,18 @@
 package rediscluster
 
 import (
-	"github.com/garyburd/redigo/redis"
+    "bytes"
+)
+
+var (
+    MULTI = &RedisMessage{
+        Message: bytes.NewBuffer([]byte("*1\r\n$5\r\nMULTI\r\n")), 
+        Command: []byte("MULTI"),
+    }
+    EXEC = &RedisMessage{
+        Message: bytes.NewBuffer([]byte("*1\r\n$4\r\nEXEC\r\n")),
+        Command: []byte("EXEC"),
+    }
 )
 
 type RedisClusterPipeline struct {
@@ -20,14 +31,14 @@ func NewRedisClusterPipeline(cluster *RedisCluster) *RedisClusterPipeline {
 	return &rcp
 }
 
-func (rcp *RedisClusterPipeline) Send(cmd string, args ...interface{}) error {
-	group, groupId := rcp.cluster.Partition(args[0].(string))
+func (rcp *RedisClusterPipeline) Send(message *RedisMessage) error {
+	group, groupId := rcp.cluster.Partition(string(message.Key))
 	shard, shardId := group.GetNextShard()
 	dbId := [2]uint32{groupId, shardId}
 	if _, ok := rcp.shardGroupsUsed[dbId]; !ok {
-		shard.Send("MULTI")
+		shard.Send(MULTI)
 	}
-	err := shard.Send(cmd, args...)
+	err := shard.Send(message)
 	if err != nil {
 		return err
 	}
@@ -37,13 +48,14 @@ func (rcp *RedisClusterPipeline) Send(cmd string, args ...interface{}) error {
 	return nil
 }
 
-func (rcp *RedisClusterPipeline) Execute() []interface{} {
-	data := make(map[[2]uint32][]interface{})
+func (rcp *RedisClusterPipeline) Execute() []*RedisMessage {
+	data := make(map[[2]uint32][]*RedisMessage)
 	indexes := make(map[[2]uint32]int)
 	var err error
 	for dbId, _ := range rcp.shardGroupsUsed {
 		groupId, shardId := dbId[0], dbId[1]
-		data[dbId], err = redis.MultiBulk(rcp.cluster.ShardGroups[groupId].Shards[shardId].Do("EXEC"))
+        rcp.cluster.ShardGroups[groupId].Shards[shardId].Do(EXEC)
+		data[dbId], err = rcp.cluster.ShardGroups[groupId].Shards[shardId].Conn.ReadMessages()
 		if err != nil {
 			data[dbId] = nil
 		} else {
@@ -51,7 +63,7 @@ func (rcp *RedisClusterPipeline) Execute() []interface{} {
 		}
 	}
 
-	results := make([]interface{}, rcp.numRequests)
+	results := make([]*RedisMessage, rcp.numRequests)
 	for index, dbId := range rcp.ordering[rcp.numRecieved:] {
 		dataIndex, ok := indexes[dbId]
 		if data[dbId] != nil && ok {
