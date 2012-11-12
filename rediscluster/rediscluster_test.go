@@ -3,13 +3,12 @@ package rediscluster
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"log"
 	"testing"
-    "log"
-    "strings"
 )
 
 func TestRedisCluster(t *testing.T) {
-	N := 2
+	N := 5
 
 	group1 := NewRedisShardGroup(1, NewRedisShard(1, "127.0.0.1", 6379, 1), NewRedisShard(2, "127.0.0.1", 6379, 2))
 	group2 := NewRedisShardGroup(2, NewRedisShard(3, "127.0.0.1", 6379, 3), NewRedisShard(4, "127.0.0.1", 6379, 4))
@@ -27,7 +26,7 @@ func TestRedisCluster(t *testing.T) {
 	}
 
 	for i := 0; i < N; i++ {
-        log.Printf("Setting element %d", i)
+		log.Printf("Setting element %d", i)
 		_, err := rc.Do(MessageFromString(fmt.Sprintf("SET TEST_%d %d", i, i)))
 		if err != nil {
 			t.Fatalf("Could not set value TEST_%d: %s", i, err)
@@ -42,11 +41,10 @@ func TestRedisCluster(t *testing.T) {
 		}
 	}
 	result := pipeline.Execute()
-	for i, v := range result.Message {
-        log.Printf("Result for %d: %s", i, strings.Replace(string(append(v[0], v[1]...)), "\r\n", " : ", -1))
-		value, err := redis.Int(append(v[0], v[1]...), nil)
+	mb, err := redis.MultiBulk(result.Bytes(), nil)
+	for i, value := range mb {
 		if err != nil || value != i {
-            t.Fatalf("Did not get proper result back for TEST_%d: %d: %s", i, value, err)
+			t.Fatalf("Did not get proper result back for TEST_%d: %d: %s", i, value, err)
 		}
 	}
 

@@ -148,13 +148,13 @@ func (rsg *RedisShardGroup) Do(req *RedisMessage) (*RedisMessage, error) {
 	if !rsg.initialized {
 		return nil, fmt.Errorf("RedisShardGroup not initialized")
 	}
-    // TODO: have WRITE_OPERTIONS be map[[]byte]bool instead of map[string]bool
+	// TODO: have WRITE_OPERTIONS be map[[]byte]bool instead of map[string]bool
 	if _, is_write := WRITE_OPERATIONS[req.Command()]; is_write {
 		var finalError, err error
 		var response *RedisMessage
 		for _, shard := range rsg.Shards {
 			// TODO: Right now we only capture the last response and the last error... what is a good fix?
-            //req.Message.  YOU HAVE TO REWIND THE FUCKING BUFFER
+			//req.Message.  YOU HAVE TO REWIND THE FUCKING BUFFER
 			response, err = shard.Do(req)
 			if err != nil {
 				finalError = err

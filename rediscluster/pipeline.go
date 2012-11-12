@@ -1,14 +1,13 @@
 package rediscluster
 
 import (
-    "fmt"
-    "strings"
-    "log"
+	"fmt"
+	"log"
 )
 
 var (
-    MULTI = MessageFromString("MULTI")
-    EXEC = MessageFromString("EXEC")
+	MULTI = MessageFromString("MULTI")
+	EXEC  = MessageFromString("EXEC")
 )
 
 type RedisClusterPipeline struct {
@@ -49,20 +48,19 @@ func (rcp *RedisClusterPipeline) Execute() *RedisMessage {
 	indexes := make(map[[2]uint32]int)
 	for dbId, _ := range rcp.shardGroupsUsed {
 		groupId, shardId := dbId[0], dbId[1]
-        msg, err := rcp.cluster.ShardGroups[groupId].Shards[shardId].Do(EXEC)
-        log.Println(msg.String())
+		msg, err := rcp.cluster.ShardGroups[groupId].Shards[shardId].Do(EXEC)
 		if err != nil {
-            log.Println("Could not get pipeline result: %s", err)
+			log.Println("Could not get pipeline result: %s", err)
 			data[dbId] = nil
 		} else {
 			indexes[dbId] = 0
-            data[dbId] = msg.Message[1:]
+			data[dbId] = msg.Message[2:]
 		}
 	}
 
-    results := RedisMessage{}
-    results.Message = make([][2][]byte, rcp.numRequests+1)
-    results.Message[0][0] = []byte(fmt.Sprintf("*$%d\r\n", rcp.numRequests))
+	results := RedisMessage{}
+	results.Message = make([][2][]byte, rcp.numRequests+1)
+	results.Message[0][0] = []byte(fmt.Sprintf("*%d\r\n", rcp.numRequests))
 	for index, dbId := range rcp.ordering[rcp.numRecieved:] {
 		dataIndex, ok := indexes[dbId]
 		if data[dbId] != nil && ok {
@@ -71,7 +69,5 @@ func (rcp *RedisClusterPipeline) Execute() *RedisMessage {
 		}
 	}
 	rcp.numRecieved = rcp.numRequests
-    log.Println(data)
-    log.Printf("Pipeline results: %s", strings.Replace(results.String(), "\r\n", " : ", -1))
 	return &results
 }

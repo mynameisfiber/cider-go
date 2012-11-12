@@ -2,7 +2,7 @@ package rediscluster
 
 import (
 	"fmt"
-    "log"
+	"log"
 )
 
 const (
@@ -17,18 +17,18 @@ type RedisShard struct {
 	Status    uint32
 	LastError error
 
-    Conn *RedisConnection
+	Conn *RedisConnection
 }
 
 func NewRedisShard(id int, host string, port, db int) *RedisShard {
-    var err error
-    rs := RedisShard{Id:id}
+	var err error
+	rs := RedisShard{Id: id}
 
-    rs.Conn, err = NewRedisConnection(host, port, db)
-    if err != nil {
-        return nil
-    }
-    return &rs
+	rs.Conn, err = NewRedisConnection(host, port, db)
+	if err != nil {
+		return nil
+	}
+	return &rs
 }
 
 func (rs *RedisShard) Close() {
@@ -36,12 +36,12 @@ func (rs *RedisShard) Close() {
 }
 
 func (rs *RedisShard) GetStatus() uint32 {
-    _, err := rs.Conn.WriteBytes([]byte("PING\r\n"))
-    if err != nil {
-        rs.Status = REDIS_DISCONNECTED
-    }
+	_, err := rs.Conn.WriteBytes([]byte("PING\r\n"))
+	if err != nil {
+		rs.Status = REDIS_DISCONNECTED
+	}
 
-    reply, err := rs.Conn.ReadMessage()
+	reply, err := rs.Conn.ReadMessage()
 	if err != nil || reply.String() != "+PONG\r\n" {
 		rs.Status = REDIS_DISCONNECTED
 	} else {
@@ -65,13 +65,12 @@ func (rs *RedisShard) Do(req *RedisMessage) (*RedisMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-    log.Printf("[shard %d] Do'ing on command: %s %s", rs.Id, req.Command(), req.Key())
-    _, err = rs.Conn.WriteMessage(req)
-    if err != nil {
-        return nil, err
-    }
-    log.Printf("[shard %d] Reading on command: %s %s", rs.Id, req.Command(), req.Key())
-    return rs.Conn.ReadMessage()
+	log.Printf("[shard %d] Do'ing on command: %s %s", rs.Id, req.Command(), req.Key())
+	_, err = rs.Conn.WriteMessage(req)
+	if err != nil {
+		return nil, err
+	}
+	return rs.Conn.ReadMessage()
 }
 
 func (rs *RedisShard) Send(req *RedisMessage) error {
@@ -79,8 +78,8 @@ func (rs *RedisShard) Send(req *RedisMessage) error {
 	if err != nil {
 		return err
 	}
-    _, err = rs.Conn.WriteMessage(req)
-    return err
+	_, err = rs.Conn.WriteMessage(req)
+	return err
 }
 
 func (rs *RedisShard) canIssue(cmd string) error {
