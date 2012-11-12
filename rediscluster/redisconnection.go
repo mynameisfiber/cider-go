@@ -1,13 +1,14 @@
 package rediscluster
 
 import (
-    "fmt"
     "bytes"
+    "fmt"
     "bufio"
     "strconv"
     "io"
     "net"
     "log"
+    "strings"
 )
 
 type RedisConnection struct {
@@ -18,8 +19,6 @@ type RedisConnection struct {
 
 	br   *bufio.Reader
 	bw   *bufio.Writer
-
-    pending int
 }
 
 
@@ -39,13 +38,16 @@ func (rc *RedisConnection) WriteMulti() (int64, error) {
 }
 
 func (rc *RedisConnection) WriteBytes(message []byte) (int64, error) {
-    log.Printf("Writing message: %s", message)
+    log.Printf("Writing message: %s", strings.Replace(string(message), "\r\n", " : ", -1))
     n, err := rc.bw.Write(message)
     if err != nil {
         return 0, err
     }
-    rc.pending += 1
     return int64(n), nil
+}
+
+func (rc *RedisConnection) WriteMessage(message *RedisMessage) (int64, error) {
+    return rc.WriteBytes(message.Bytes())
 }
 
 func (rc *RedisConnection) Connect() error {
@@ -59,7 +61,7 @@ func (rc *RedisConnection) Connect() error {
     rc.bw = bufio.NewWriter(rc.Conn)
 
     if err = rc.SelectDb(); err != nil {
-		log.Printf("Could not change to DB %d", rc.Db)
+        log.Printf("Could not change to DB %d: %s", rc.Db, err)
         return err
 	} else {
 		log.Printf("Connected on %s:%d:%d", rc.Host, rc.Port, rc.Db)
@@ -70,7 +72,7 @@ func (rc *RedisConnection) Connect() error {
 
 func (rc *RedisConnection) SelectDb() error {
     message := MessageFromString(fmt.Sprintf("SELECT %d", rc.Db))
-    _, err := rc.WriteBytes(message.Message)
+    _, err := rc.WriteMessage(message)
     if err != nil {
         return err
     }
@@ -80,8 +82,8 @@ func (rc *RedisConnection) SelectDb() error {
         return err
     }
 
-    if string(response.Message) != "+OK\r\n" {
-        return fmt.Errorf("Could not switch databases")
+    if response.String() != "+OK\r\n" {
+        return fmt.Errorf("Could not switch databases: %s", response.String())
     }
     return nil
 }
@@ -98,98 +100,123 @@ func (rc *RedisConnection) readLine() ([]byte, error) {
 	if i < 0 || p[i] != '\r' {
 		return nil, fmt.Errorf("bad response line terminator")
 	}
-	return p[:i], nil
-}
-
-func (rc *RedisConnection) ReadMessages() ([]*RedisMessage, error) {
-    log.Printf("Doing %d reads", rc.pending+1)
-    messages := make([]*RedisMessage, 1)//rc.pending+1)
-    i := 0
-    var err error
-    for rc.pending >= 0 && len(messages) > i {
-        messages[i], err = rc.ReadMessage()
-        if err != nil {
-            return nil, err
-        }
-        i += 1
-    }
-    return messages, nil
+    return p, nil
 }
 
 func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
     rc.bw.Flush()
 
-	message := new(RedisMessage)
-
-    parts := make([][2]int, 1)
-    var start, end int
-    msgbuf := new(bytes.Buffer)
+    curPart := [2]bytes.Buffer{}
+	message := NewRedisMessage()
+    inNestedMultiBlock := 0
 	n := 0 // n gets changed with the first multi-bulk request
+    var err error
+    var line []byte
 	for i := 0; i <= n; i += 1 {
-        end = start
-		line, err := rc.readLine()
-        log.Printf("n = %d, line = %s, pending = %d", n, line, rc.pending)
+		line, err = rc.readLine()
+        log.Printf("Read line: %s", line)
         if err != nil {
             return nil, err
         }
 
-        start = msgbuf.Len()
-		msgbuf.Write(line)
-        end = msgbuf.Len()
-		msgbuf.Write(EOL)
 		switch line[0] {
-		case '+':
-		case '-':
-		case ':':
+        case '+', '-', ':':
+            _, err = curPart[1].Write(line)
+            if err != nil {
+                return nil, err
+            }
 			break
 		case '$':
-			n, err := strconv.Atoi(string(line[1:]))
-			if err != nil || n < 0 {
+            m, err := strconv.Atoi(string(line[1:len(line)-2]))
+			if err != nil || m < 0 {
 				return nil, err
 			}
-			bulk := make([]byte, n)
-			_, err = io.ReadFull(rc.br, bulk)
-            log.Printf("(also just read '%s')", bulk)
+            if inNestedMultiBlock == 0 {
+                _, err = curPart[0].Write(line)
+                if err != nil {
+                    return nil, err
+                }
+            } else {
+                _, err = curPart[1].Write(line)
+                if err != nil {
+                    return nil, err
+                }
+            }
 
-            start = msgbuf.Len()
-			msgbuf.Write(bulk)
-            end = msgbuf.Len()
-			msgbuf.Write(EOL)
-			if err != nil {
-				return nil, err
-			}
+            if m != -1 {
+			    bulk := make([]byte, m)
+			    _, err = io.ReadFull(rc.br, bulk)
+                log.Printf("Read line: %s", bulk)
+                if err != nil {
+                    return nil, err
+                }
 
-			// The following clears out the /r/n on this argument line
-			line, err := rc.readLine()
-			if err != nil {
-				return nil, err
-			}
-			if len(line) != 0 {
-				return nil, fmt.Errorf("Bad bulk format")
-			}
+                _, err = curPart[1].Write(bulk)
+                if err != nil {
+                    return nil, err
+                }
+                _, err = curPart[1].Write(EOL)
+                if err != nil {
+                    return nil, err
+                }
+
+			    // The following clears out the /r/n on this argument line
+			    line, err = rc.readLine()
+			    if err != nil {
+			    	return nil, err
+			    }
+			    if len(line) != 2 {
+			    	return nil, fmt.Errorf("Bad bulk format")
+			    }
+            }
 			break
 		case '*':
-            newN, err := strconv.Atoi(string(line[1:]))
+            newN, err := strconv.Atoi(string(line[1:len(line)-2]))
+            if n != 0 {
+                inNestedMultiBlock = newN
+            }
             n += newN
 			if err != nil || n < 0 {
 				return nil, err
 			}
+            _, err = curPart[0].Write(line)
+            if err != nil {
+                return nil, err
+            }
 			break
 		default:
 			return nil, fmt.Errorf("Unpexected response line")
 		}
-        if start != end {
-            parts = append(parts, [2]int{start, end})
+
+        if inNestedMultiBlock > 0 {
+            inNestedMultiBlock -= 1
+        } else {
+            a := make([]byte, len(curPart[0]))
+            b := make([]byte, len(curPart[1]))
+            curPart[0].Read(a)
+            curPart[1].Read(b)
+            clear
+            cd /servcd /ser 
+            sudo svc -d /ser    qu  
+
+            message.Message = append(message.Message, [2][]byte{curPart[0].Bytes(), curPart[1].Bytes()})
+    
+            
+            
+            vim ser 
+            
+            :cc
+            jjjjjjjjjjjkkkkkkkkkkkkkkkkkkjjjjjjuuut checkout HEAD~1 -- ser  
+            
+            :e:cc
+            /queuereader_
+            n/queuereader_Recomm
+            /recommendation
+            jjjjjjjjjjjjjjjjjjjjjjjjlllllllllllllR3urPart[0].Reset()
+            curPart[1].Reset()
         }
 	}
-
-    rc.pending -= 1
-    log.Printf("Done with line!")
-    message.Message = msgbuf.Bytes()
-    message.Parts = make([][]byte, len(parts))
-    for i, part := range parts {
-        message.Parts[i] = message.Message[part[0]:part[1]] 
-    }
+    log.Printf("Read response: %s", strings.Replace(message.String(), "\r\n", " : ", -1))
 	return message, nil
 }
 

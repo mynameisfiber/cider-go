@@ -149,7 +149,7 @@ func (rsg *RedisShardGroup) Do(req *RedisMessage) (*RedisMessage, error) {
 		return nil, fmt.Errorf("RedisShardGroup not initialized")
 	}
     // TODO: have WRITE_OPERTIONS be map[[]byte]bool instead of map[string]bool
-	if _, is_write := WRITE_OPERATIONS[string(req.Parts[0])]; is_write {
+	if _, is_write := WRITE_OPERATIONS[req.Command()]; is_write {
 		var finalError, err error
 		var response *RedisMessage
 		for _, shard := range rsg.Shards {

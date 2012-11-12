@@ -5,10 +5,11 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"testing"
     "log"
+    "strings"
 )
 
 func TestRedisCluster(t *testing.T) {
-	N := 5
+	N := 2
 
 	group1 := NewRedisShardGroup(1, NewRedisShard(1, "127.0.0.1", 6379, 1), NewRedisShard(2, "127.0.0.1", 6379, 2))
 	group2 := NewRedisShardGroup(2, NewRedisShard(3, "127.0.0.1", 6379, 3), NewRedisShard(4, "127.0.0.1", 6379, 4))
@@ -41,13 +42,11 @@ func TestRedisCluster(t *testing.T) {
 		}
 	}
 	result := pipeline.Execute()
-	if len(result) != N {
-		t.Fatalf("Did not get enough results back: %d, %s", len(result), result)
-	}
-	for i, v := range result {
-		value, err := redis.Int(v, nil)
+	for i, v := range result.Message {
+        log.Printf("Result for %d: %s", i, strings.Replace(string(append(v[0], v[1]...)), "\r\n", " : ", -1))
+		value, err := redis.Int(append(v[0], v[1]...), nil)
 		if err != nil || value != i {
-			t.Fatalf("Did not get proper result back for TEST_%d: %d", i, value)
+            t.Fatalf("Did not get proper result back for TEST_%d: %d: %s", i, value, err)
 		}
 	}
 

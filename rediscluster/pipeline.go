@@ -1,6 +1,9 @@
 package rediscluster
 
 import (
+    "fmt"
+    "strings"
+    "log"
 )
 
 var (
@@ -25,14 +28,14 @@ func NewRedisClusterPipeline(cluster *RedisCluster) *RedisClusterPipeline {
 }
 
 func (rcp *RedisClusterPipeline) Send(message *RedisMessage) error {
-	group, groupId := rcp.cluster.Partition(string(message.Parts[1]))
+	group, groupId := rcp.cluster.Partition(message.Key())
 	shard, shardId := group.GetNextShard()
 	dbId := [2]uint32{groupId, shardId}
 	if _, ok := rcp.shardGroupsUsed[dbId]; !ok {
 		shard.Do(MULTI)
 	}
 	msg, err := shard.Do(message)
-	if err != nil || string(msg.Message) != "+QUEUED\r\n" {
+	if err != nil || msg.String() != "+QUEUED\r\n" {
 		return err
 	}
 	rcp.ordering = append(rcp.ordering, [2]uint32{groupId, shardId})
@@ -41,28 +44,34 @@ func (rcp *RedisClusterPipeline) Send(message *RedisMessage) error {
 	return nil
 }
 
-func (rcp *RedisClusterPipeline) Execute() []*RedisMessage {
-	data := make(map[[2]uint32][]*RedisMessage)
+func (rcp *RedisClusterPipeline) Execute() *RedisMessage {
+	data := make(map[[2]uint32][][2][]byte)
 	indexes := make(map[[2]uint32]int)
-	var err error
 	for dbId, _ := range rcp.shardGroupsUsed {
 		groupId, shardId := dbId[0], dbId[1]
-		data[dbId], err = rcp.cluster.ShardGroups[groupId].Shards[shardId].Do(EXEC)
+        msg, err := rcp.cluster.ShardGroups[groupId].Shards[shardId].Do(EXEC)
+        log.Println(msg.String())
 		if err != nil {
+            log.Println("Could not get pipeline result: %s", err)
 			data[dbId] = nil
 		} else {
 			indexes[dbId] = 0
+            data[dbId] = msg.Message[1:]
 		}
 	}
 
-	results := make([]*RedisMessage, rcp.numRequests)
+    results := RedisMessage{}
+    results.Message = make([][2][]byte, rcp.numRequests+1)
+    results.Message[0][0] = []byte(fmt.Sprintf("*$%d\r\n", rcp.numRequests))
 	for index, dbId := range rcp.ordering[rcp.numRecieved:] {
 		dataIndex, ok := indexes[dbId]
 		if data[dbId] != nil && ok {
-			results[index] = data[dbId][dataIndex]
+			results.Message[index+1] = data[dbId][dataIndex]
 			indexes[dbId] += 1
 		}
 	}
 	rcp.numRecieved = rcp.numRequests
-	return results
+    log.Println(data)
+    log.Printf("Pipeline results: %s", strings.Replace(results.String(), "\r\n", " : ", -1))
+	return &results
 }
