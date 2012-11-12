@@ -1,10 +1,10 @@
 package main
 
 import (
+	"./rediscluster"
+	"bufio"
 	"log"
 	"net"
-    "bufio"
-    "./rediscluster"
 )
 
 var redisCluster *rediscluster.RedisCluster
@@ -14,8 +14,8 @@ var (
 
 type RedisClient struct {
 	Conn *net.Conn
-	br   *bufio.Reader
-	bw   *bufio.Writer
+
+	*rediscluster.RedisProtocol
 }
 
 func NewRedisClient(conn net.Conn) *RedisClient {
@@ -30,7 +30,7 @@ func NewRedisClient(conn net.Conn) *RedisClient {
 func (rc *RedisClient) Handle() error {
 	var err error
 	for request, err := rediscluster.ReadRequest(rc.br); err == nil; {
-        redisCluster.DoRequest(request)
+		redisCluster.DoRequest(request)
 	}
 	return err
 }
@@ -47,7 +47,7 @@ func main() {
 	group3 := rediscluster.NewRedisShardGroup(3, &rediscluster.RedisShard{Id: 5, Host: "127.0.0.1", Port: 6379, Db: 5}, &rediscluster.RedisShard{Id: 6, Host: "127.0.0.1", Port: 6379, Db: 6})
 	group4 := rediscluster.NewRedisShardGroup(4, &rediscluster.RedisShard{Id: 8, Host: "127.0.0.1", Port: 6379, Db: 8}, &rediscluster.RedisShard{Id: 7, Host: "127.0.0.1", Port: 6379, Db: 7})
 	redisCluster = rediscluster.NewRedisCluster(group1, group2, group3, group4)
-    log.Printf("Started redis clister")
+	log.Printf("Started redis clister")
 
 	log.Printf("Listening to connections on %s", netAddr)
 	for {

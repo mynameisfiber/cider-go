@@ -1,49 +1,24 @@
 package rediscluster
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strconv"
 )
 
 type RedisConnection struct {
 	Host string
 	Port int
 	Db   int
-	Conn net.Conn
 
-	br *bufio.Reader
-	bw *bufio.Writer
+	Conn net.Conn
+	*RedisProtocol
 }
 
 func NewRedisConnection(host string, port, db int) (*RedisConnection, error) {
 	rc := RedisConnection{Host: host, Port: port, Db: db}
 	err := rc.Connect()
 	return &rc, err
-}
-
-func (rc *RedisConnection) WriteMulti() (int64, error) {
-	n, err := rc.bw.Write([]byte("*1\r\n$5\r\nMULTI\r\n"))
-	if err != nil {
-		return 0, err
-	}
-	return int64(n), nil
-}
-
-func (rc *RedisConnection) WriteBytes(message []byte) (int64, error) {
-	n, err := rc.bw.Write(message)
-	if err != nil {
-		return 0, err
-	}
-	return int64(n), nil
-}
-
-func (rc *RedisConnection) WriteMessage(message *RedisMessage) (int64, error) {
-	return rc.WriteBytes(message.Bytes())
 }
 
 func (rc *RedisConnection) Connect() error {
@@ -53,8 +28,8 @@ func (rc *RedisConnection) Connect() error {
 	if err != nil {
 		return err
 	}
-	rc.br = bufio.NewReader(rc.Conn)
-	rc.bw = bufio.NewWriter(rc.Conn)
+
+	rc.RedisProtocol = NewRedisProtocol(rc.Conn)
 
 	if err = rc.SelectDb(); err != nil {
 		log.Printf("Could not change to DB %d: %s", rc.Db, err)
@@ -82,119 +57,6 @@ func (rc *RedisConnection) SelectDb() error {
 		return fmt.Errorf("Could not switch databases: %s", response.String())
 	}
 	return nil
-}
-
-func (rc *RedisConnection) readLine() ([]byte, error) {
-	p, err := rc.br.ReadSlice('\n')
-	if err == bufio.ErrBufferFull {
-		return nil, fmt.Errorf("long response line")
-	}
-	if err != nil {
-		return nil, err
-	}
-	i := len(p) - 2
-	if i < 0 || p[i] != '\r' {
-		return nil, fmt.Errorf("bad response line terminator")
-	}
-	return p, nil
-}
-
-func (rc *RedisConnection) ReadMessage() (*RedisMessage, error) {
-	rc.bw.Flush()
-
-	curPart := [2]bytes.Buffer{}
-	message := NewRedisMessage()
-	inNestedMultiBlock := 0
-	n := 0 // n gets changed with the first multi-bulk request
-	var err error
-	var line []byte
-	for i := 0; i <= n; i += 1 {
-		line, err = rc.readLine()
-		if err != nil {
-			return nil, err
-		}
-
-		switch line[0] {
-		case '+', '-', ':':
-			_, err = curPart[1].Write(line)
-			if err != nil {
-				return nil, err
-			}
-			break
-		case '$':
-			m, err := strconv.Atoi(string(line[1 : len(line)-2]))
-			if err != nil || m < 0 {
-				return nil, err
-			}
-			if inNestedMultiBlock == 0 {
-				_, err = curPart[0].Write(line)
-				if err != nil {
-					return nil, err
-				}
-			} else {
-				_, err = curPart[1].Write(line)
-				if err != nil {
-					return nil, err
-				}
-			}
-
-			if m != -1 {
-				bulk := make([]byte, m)
-				_, err = io.ReadFull(rc.br, bulk)
-				if err != nil {
-					return nil, err
-				}
-
-				_, err = curPart[1].Write(bulk)
-				if err != nil {
-					return nil, err
-				}
-				_, err = curPart[1].Write(EOL)
-				if err != nil {
-					return nil, err
-				}
-
-				// The following clears out the /r/n on this argument line
-				line, err = rc.readLine()
-				if err != nil {
-					return nil, err
-				}
-				if len(line) != 2 {
-					return nil, fmt.Errorf("Bad bulk format")
-				}
-			}
-			break
-		case '*':
-			newN, err := strconv.Atoi(string(line[1 : len(line)-2]))
-			if n != 0 {
-				inNestedMultiBlock = newN
-			}
-			n += newN
-			if err != nil || n < 0 {
-				return nil, err
-			}
-			_, err = curPart[0].Write(line)
-			if err != nil {
-				return nil, err
-			}
-			break
-		default:
-			return nil, fmt.Errorf("Unpexected response line")
-		}
-
-		if inNestedMultiBlock > 0 {
-			inNestedMultiBlock -= 1
-		} else {
-			a := make([]byte, curPart[0].Len())
-			b := make([]byte, curPart[1].Len())
-			curPart[0].Read(a)
-			curPart[1].Read(b)
-			message.Message = append(message.Message, [2][]byte{a, b})
-			curPart[0].Reset()
-			curPart[1].Reset()
-		}
-	}
-	return message, nil
 }
 
 func (rc *RedisConnection) Close() {
