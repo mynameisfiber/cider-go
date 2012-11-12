@@ -65,7 +65,7 @@ func (rs *RedisShard) Do(req *RedisMessage) (*RedisMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("[shard %d] Do'ing on command: %s %s", rs.Id, req.Command(), req.Key())
+	log.Printf("[shard %d] Do'ing on command: %s - %s", rs.Id, req.Command(), req.Key())
 	_, err = rs.Conn.WriteMessage(req)
 	if err != nil {
 		return nil, err

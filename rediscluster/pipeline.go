@@ -26,7 +26,7 @@ func NewRedisClusterPipeline(cluster *RedisCluster) *RedisClusterPipeline {
 	return &rcp
 }
 
-func (rcp *RedisClusterPipeline) Send(message *RedisMessage) error {
+func (rcp *RedisClusterPipeline) Send(message *RedisMessage) (*RedisMessage, error) {
 	group, groupId := rcp.cluster.Partition(message.Key())
 	shard, shardId := group.GetNextShard()
 	dbId := [2]uint32{groupId, shardId}
@@ -35,12 +35,12 @@ func (rcp *RedisClusterPipeline) Send(message *RedisMessage) error {
 	}
 	msg, err := shard.Do(message)
 	if err != nil || msg.String() != "+QUEUED\r\n" {
-		return err
+		return msg, err
 	}
 	rcp.ordering = append(rcp.ordering, [2]uint32{groupId, shardId})
 	rcp.shardGroupsUsed[dbId] = true
 	rcp.numRequests += 1
-	return nil
+	return msg, nil
 }
 
 func (rcp *RedisClusterPipeline) Execute() *RedisMessage {

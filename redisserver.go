@@ -1,10 +1,9 @@
 package main
 
 import (
-	"./rediscluster"
-	"bufio"
 	"log"
 	"net"
+    "./rediscluster"
 )
 
 var redisCluster *rediscluster.RedisCluster
@@ -14,23 +13,42 @@ var (
 
 type RedisClient struct {
 	Conn *net.Conn
-
-	*rediscluster.RedisProtocol
+    
+    *rediscluster.RedisProtocol
 }
 
 func NewRedisClient(conn net.Conn) *RedisClient {
 	client := RedisClient{
 		Conn: &conn,
-		bw:   bufio.NewWriter(conn),
-		br:   bufio.NewReader(conn),
+        RedisProtocol: rediscluster.NewRedisProtocol(conn),
 	}
 	return &client
 }
 
 func (rc *RedisClient) Handle() error {
 	var err error
-	for request, err := rediscluster.ReadRequest(rc.br); err == nil; {
-		redisCluster.DoRequest(request)
+    isPipeline := false
+    var pipeline *rediscluster.RedisClusterPipeline
+	for request, err := rc.ReadMessage(); err == nil; {
+        switch request.Command() {
+            case "MULTI":
+                isPipeline = true
+                pipeline = rediscluster.NewRedisClusterPipeline(redisCluster)
+                break
+            case "EXEC":
+                isPipeline = false
+                response := pipeline.Execute()
+                rc.WriteMessage(response)
+                continue
+        }
+
+        var response *rediscluster.RedisMessage
+        if isPipeline {
+            response, err = pipeline.Send(request)
+        } else {
+            response, err = redisCluster.Do(request)
+        }
+        rc.WriteMessage(response)
 	}
 	return err
 }
@@ -42,12 +60,13 @@ func main() {
 		log.Fatalf("Could not bind to address %s", netAddr)
 	}
 
-	group1 := rediscluster.NewRedisShardGroup(1, &rediscluster.RedisShard{Id: 1, Host: "127.0.0.1", Port: 6379, Db: 1}, &rediscluster.RedisShard{Id: 2, Host: "127.0.0.1", Port: 6379, Db: 2})
-	group2 := rediscluster.NewRedisShardGroup(2, &rediscluster.RedisShard{Id: 3, Host: "127.0.0.1", Port: 6379, Db: 3}, &rediscluster.RedisShard{Id: 4, Host: "127.0.0.1", Port: 6379, Db: 4})
-	group3 := rediscluster.NewRedisShardGroup(3, &rediscluster.RedisShard{Id: 5, Host: "127.0.0.1", Port: 6379, Db: 5}, &rediscluster.RedisShard{Id: 6, Host: "127.0.0.1", Port: 6379, Db: 6})
-	group4 := rediscluster.NewRedisShardGroup(4, &rediscluster.RedisShard{Id: 8, Host: "127.0.0.1", Port: 6379, Db: 8}, &rediscluster.RedisShard{Id: 7, Host: "127.0.0.1", Port: 6379, Db: 7})
+	group1 := rediscluster.NewRedisShardGroup(1, rediscluster.NewRedisShard(1, "127.0.0.1", 6379, 1), rediscluster.NewRedisShard(2, "127.0.0.1", 6379, 2))
+	group2 := rediscluster.NewRedisShardGroup(2, rediscluster.NewRedisShard(3, "127.0.0.1", 6379, 3), rediscluster.NewRedisShard(4, "127.0.0.1", 6379, 4))
+	group3 := rediscluster.NewRedisShardGroup(3, rediscluster.NewRedisShard(5, "127.0.0.1", 6379, 5), rediscluster.NewRedisShard(6, "127.0.0.1", 6379, 6))
+	group4 := rediscluster.NewRedisShardGroup(4, rediscluster.NewRedisShard(8, "127.0.0.1", 6379, 8), rediscluster.NewRedisShard(7, "127.0.0.1", 6379, 7))
+
 	redisCluster = rediscluster.NewRedisCluster(group1, group2, group3, group4)
-	log.Printf("Started redis clister")
+    log.Printf("Started redis clister")
 
 	log.Printf("Listening to connections on %s", netAddr)
 	for {
