@@ -15,7 +15,7 @@ type RedisMessage struct {
 
 func NewRedisMessage() *RedisMessage {
 	rm := RedisMessage{
-		Message: make([][2][]byte, 1),
+		Message: *new([][2][]byte),
 	}
 	return &rm
 }
@@ -25,6 +25,9 @@ func (rm *RedisMessage) String() string {
 }
 
 func (rm *RedisMessage) Bytes() []byte {
+	if rm == nil {
+		return nil
+	}
 	output := make([]byte, rm.Length())
 	i := 0
 	for _, vals := range rm.Message {
@@ -54,6 +57,9 @@ func (rm *RedisMessage) Command() string {
 
 func (rm *RedisMessage) Length() int {
 	i := 0
+	if rm == nil {
+		return 0
+	}
 	for _, vals := range rm.Message {
 		for _, val := range vals {
 			i += len(val)

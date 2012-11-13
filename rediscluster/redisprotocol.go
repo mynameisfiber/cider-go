@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
 )
 
@@ -33,6 +34,7 @@ func (rp *RedisProtocol) WriteMulti() (int64, error) {
 }
 
 func (rp *RedisProtocol) WriteBytes(message []byte) (int64, error) {
+	log.Printf("Writing message: %s", message)
 	n, err := rp.bw.Write(message)
 	if err != nil {
 		return 0, err
@@ -46,6 +48,7 @@ func (rp *RedisProtocol) WriteMessage(message *RedisMessage) (int64, error) {
 
 func (rp *RedisProtocol) readLine() ([]byte, error) {
 	p, err := rp.br.ReadSlice('\n')
+	log.Printf("Just read: %s", p)
 	if err == bufio.ErrBufferFull {
 		return nil, fmt.Errorf("long response line")
 	}
@@ -83,7 +86,7 @@ func (rp *RedisProtocol) ReadMessage() (*RedisMessage, error) {
 			break
 		case '$':
 			m, err := strconv.Atoi(string(line[1 : len(line)-2]))
-			if err != nil || m < 0 {
+			if err != nil || m < -1 {
 				return nil, err
 			}
 			if inNestedMultiBlock == 0 {

@@ -1,9 +1,10 @@
 package main
 
 import (
+	"./rediscluster"
 	"log"
 	"net"
-    "./rediscluster"
+	"strings"
 )
 
 var redisCluster *rediscluster.RedisCluster
@@ -13,42 +14,52 @@ var (
 
 type RedisClient struct {
 	Conn *net.Conn
-    
-    *rediscluster.RedisProtocol
+
+	*rediscluster.RedisProtocol
 }
 
 func NewRedisClient(conn net.Conn) *RedisClient {
 	client := RedisClient{
-		Conn: &conn,
-        RedisProtocol: rediscluster.NewRedisProtocol(conn),
+		Conn:          &conn,
+		RedisProtocol: rediscluster.NewRedisProtocol(conn),
 	}
 	return &client
 }
 
 func (rc *RedisClient) Handle() error {
 	var err error
-    isPipeline := false
-    var pipeline *rediscluster.RedisClusterPipeline
+	isPipeline := false
+	var pipeline *rediscluster.RedisClusterPipeline
 	for request, err := rc.ReadMessage(); err == nil; {
-        switch request.Command() {
-            case "MULTI":
-                isPipeline = true
-                pipeline = rediscluster.NewRedisClusterPipeline(redisCluster)
-                break
-            case "EXEC":
-                isPipeline = false
-                response := pipeline.Execute()
-                rc.WriteMessage(response)
-                continue
-        }
+		log.Printf("Got command: %s", strings.Replace(request.String(), "\r\n", " : ", -1))
+		switch request.Command() {
+		case "MULTI":
+			isPipeline = true
+			pipeline = rediscluster.NewRedisClusterPipeline(redisCluster)
+			break
+		case "EXEC":
+			isPipeline = false
+			response := pipeline.Execute()
+			rc.WriteMessage(response)
+			continue
+		}
 
-        var response *rediscluster.RedisMessage
-        if isPipeline {
-            response, err = pipeline.Send(request)
-        } else {
-            response, err = redisCluster.Do(request)
-        }
-        rc.WriteMessage(response)
+		var response *rediscluster.RedisMessage
+		if isPipeline {
+			response, err = pipeline.Send(request)
+			if err != nil {
+				log.Printf("Error getting response: %s", err)
+				return err
+			}
+		} else {
+			response, err = redisCluster.Do(request)
+			if err != nil {
+				log.Printf("Error getting response: %s", err)
+				return err
+			}
+		}
+		log.Printf("Got response: %s", response.String())
+		rc.WriteMessage(response)
 	}
 	return err
 }
@@ -66,7 +77,7 @@ func main() {
 	group4 := rediscluster.NewRedisShardGroup(4, rediscluster.NewRedisShard(8, "127.0.0.1", 6379, 8), rediscluster.NewRedisShard(7, "127.0.0.1", 6379, 7))
 
 	redisCluster = rediscluster.NewRedisCluster(group1, group2, group3, group4)
-    log.Printf("Started redis clister")
+	log.Printf("Started redis cluster")
 
 	log.Printf("Listening to connections on %s", netAddr)
 	for {

@@ -110,12 +110,18 @@ func (rsg *RedisShardGroup) GetStatus() int {
 	}
 	allUp, allDown, someDown := true, true, false
 	for _, shard := range rsg.Shards {
-		if shard.Status != REDIS_CONNECTED {
-			shard.GetStatus()
+		if shard == nil {
+			allUp = false
+			someDown = true
+			allDown = allDown && true
+		} else {
+			if shard.Status != REDIS_CONNECTED {
+				shard.GetStatus()
+			}
+			allUp = allUp && (shard.Status == REDIS_CONNECTED)
+			someDown = someDown || (shard.Status != REDIS_CONNECTED)
+			allDown = allDown && (shard.Status != REDIS_CONNECTED)
 		}
-		allUp = allUp && (shard.Status == REDIS_CONNECTED)
-		someDown = someDown || (shard.Status != REDIS_CONNECTED)
-		allDown = allDown && (shard.Status != REDIS_CONNECTED)
 	}
 	if allUp && !someDown {
 		rsg.Status = GROUP_CONNECTED
