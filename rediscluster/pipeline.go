@@ -26,6 +26,10 @@ func NewRedisClusterPipeline(cluster *RedisCluster) *RedisClusterPipeline {
 	return &rcp
 }
 
+func (rcp *RedisClusterPipeline) Active() bool {
+	return (rcp.numRequests-rcp.numRecieved != 0)
+}
+
 func (rcp *RedisClusterPipeline) Send(message *RedisMessage) (*RedisMessage, error) {
 	group, groupId := rcp.cluster.Partition(message.Key())
 	shard, shardId := group.GetNextShard()
@@ -54,7 +58,12 @@ func (rcp *RedisClusterPipeline) Execute() *RedisMessage {
 			data[dbId] = nil
 		} else {
 			indexes[dbId] = 0
-			data[dbId] = msg.Message[2:]
+			if len(msg.Message) == 1 {
+				// special case for inline response
+				data[dbId] = msg.Message
+			} else {
+				data[dbId] = msg.Message[1:]
+			}
 		}
 	}
 

@@ -52,7 +52,7 @@ func (rm *RedisMessage) Command() string {
 	if len(rm.Message) < 2 {
 		return ""
 	}
-	return strings.TrimSpace(string(rm.Message[1][1]))
+	return strings.ToUpper(strings.TrimSpace(string(rm.Message[1][1])))
 }
 
 func (rm *RedisMessage) Length() int {
@@ -70,17 +70,22 @@ func (rm *RedisMessage) Length() int {
 
 func MessageFromString(input string) *RedisMessage {
 	message := RedisMessage{}
-	parts := strings.Fields(input)
-	message.Message = make([][2][]byte, len(parts)+1)
+	if input[0] == '+' {
+		message.Message = make([][2][]byte, 1)
+		message.Message[0][0] = []byte(input)
+	} else {
+		parts := strings.Fields(input)
+		message.Message = make([][2][]byte, len(parts)+1)
 
-	message.Message[0] = [2][]byte{
-		[]byte(fmt.Sprintf("*%d\r\n", len(parts))),
-		nil,
-	}
-	for i, comp := range parts {
-		message.Message[i+1] = [2][]byte{
-			[]byte(fmt.Sprintf("$%d\r\n", len(comp))),
-			[]byte(fmt.Sprintf("%s\r\n", comp)),
+		message.Message[0] = [2][]byte{
+			[]byte(fmt.Sprintf("*%d\r\n", len(parts))),
+			nil,
+		}
+		for i, comp := range parts {
+			message.Message[i+1] = [2][]byte{
+				[]byte(fmt.Sprintf("$%d\r\n", len(comp))),
+				[]byte(fmt.Sprintf("%s\r\n", comp)),
+			}
 		}
 	}
 

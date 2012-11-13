@@ -4,61 +4,82 @@ import (
 	"./rediscluster"
 	"log"
 	"net"
+	"sync/atomic"
+	"time"
+
+	"fmt"
+	"os"
+	"runtime/pprof"
 	"strings"
 )
 
 var redisCluster *rediscluster.RedisCluster
 var (
 	Clients = uint64(0)
+	OK      = rediscluster.MessageFromString("+OK\r\n")
 )
 
 type RedisClient struct {
-	Conn *net.Conn
-
+	Conn           net.Conn
+	NumRequests    uint64
+	ConnectionTime time.Time
 	*rediscluster.RedisProtocol
 }
 
 func NewRedisClient(conn net.Conn) *RedisClient {
 	client := RedisClient{
-		Conn:          &conn,
-		RedisProtocol: rediscluster.NewRedisProtocol(conn),
+		Conn:           conn,
+		RedisProtocol:  rediscluster.NewRedisProtocol(conn),
+		NumRequests:    0,
+		ConnectionTime: time.Now(),
 	}
 	return &client
 }
 
 func (rc *RedisClient) Handle() error {
 	var err error
+
+	f, err := os.Create(fmt.Sprintf("%s.pprof", rc.Conn.RemoteAddr()))
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
+
 	isPipeline := false
 	var pipeline *rediscluster.RedisClusterPipeline
-	for request, err := rc.ReadMessage(); err == nil; {
+	for {
+		request, err := rc.ReadMessage()
+		if err != nil {
+			return err
+		}
 		log.Printf("Got command: %s", strings.Replace(request.String(), "\r\n", " : ", -1))
-		switch request.Command() {
-		case "MULTI":
+
+		atomic.AddUint64(&rc.NumRequests, 1)
+		command := request.Command()
+		var response *rediscluster.RedisMessage
+		if command == "MULTI" {
 			isPipeline = true
 			pipeline = rediscluster.NewRedisClusterPipeline(redisCluster)
-			break
-		case "EXEC":
-			isPipeline = false
-			response := pipeline.Execute()
-			rc.WriteMessage(response)
-			continue
-		}
-
-		var response *rediscluster.RedisMessage
-		if isPipeline {
-			response, err = pipeline.Send(request)
-			if err != nil {
-				log.Printf("Error getting response: %s", err)
-				return err
-			}
+			response = OK
 		} else {
-			response, err = redisCluster.Do(request)
-			if err != nil {
-				log.Printf("Error getting response: %s", err)
-				return err
+			if command == "EXEC" {
+				isPipeline = false
+				response := pipeline.Execute()
+				rc.WriteMessage(response)
+			} else {
+				if isPipeline {
+					response, err = pipeline.Send(request)
+					if err != nil {
+						log.Printf("Error getting response: %s", err)
+						return err
+					}
+				} else {
+					response, err = redisCluster.Do(request)
+					if err != nil {
+						log.Printf("Error getting response: %s", err)
+						return err
+					}
+				}
 			}
 		}
-		log.Printf("Got response: %s", response.String())
 		rc.WriteMessage(response)
 	}
 	return err
@@ -66,7 +87,7 @@ func (rc *RedisClient) Handle() error {
 
 func main() {
 	netAddr := ":6666"
-	ln, err := net.Listen("tcp", netAddr)
+	listener, err := net.Listen("tcp", netAddr)
 	if err != nil {
 		log.Fatalf("Could not bind to address %s", netAddr)
 	}
@@ -81,17 +102,18 @@ func main() {
 
 	log.Printf("Listening to connections on %s", netAddr)
 	for {
-		conn, err := ln.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
 			// handle error
 			continue
 		}
-		Clients += 1
-		log.Printf("Got connection from: %s. %d clients connected", conn.RemoteAddr(), Clients)
 		client := NewRedisClient(conn)
-		go func() {
+		go func(client *RedisClient) {
+			Clients += 1
+			log.Printf("Got connection from: %s. %d clients connected", client.Conn.RemoteAddr(), Clients)
 			client.Handle()
 			Clients -= 1
-		}()
+			log.Printf("Client disconnected: %s (after %d requests). %d clients connected", client.Conn.RemoteAddr(), client.NumRequests, Clients)
+		}(client)
 	}
 }

@@ -14,11 +14,7 @@ type RedisProtocol struct {
 	bw *bufio.Writer
 }
 
-type ReadWriter interface {
-	io.ReadWriter
-}
-
-func NewRedisProtocol(connection ReadWriter) *RedisProtocol {
+func NewRedisProtocol(connection io.ReadWriter) *RedisProtocol {
 	return &RedisProtocol{
 		br: bufio.NewReader(connection),
 		bw: bufio.NewWriter(connection),
@@ -34,7 +30,6 @@ func (rp *RedisProtocol) WriteMulti() (int64, error) {
 }
 
 func (rp *RedisProtocol) WriteBytes(message []byte) (int64, error) {
-	log.Printf("Writing message: %s", message)
 	n, err := rp.bw.Write(message)
 	if err != nil {
 		return 0, err
@@ -48,8 +43,8 @@ func (rp *RedisProtocol) WriteMessage(message *RedisMessage) (int64, error) {
 
 func (rp *RedisProtocol) readLine() ([]byte, error) {
 	p, err := rp.br.ReadSlice('\n')
-	log.Printf("Just read: %s", p)
 	if err == bufio.ErrBufferFull {
+		log.Println("BUFFER FULL!")
 		return nil, fmt.Errorf("long response line")
 	}
 	if err != nil {
@@ -118,12 +113,9 @@ func (rp *RedisProtocol) ReadMessage() (*RedisMessage, error) {
 				}
 
 				// The following clears out the /r/n on this argument line
-				line, err = rp.readLine()
+				_, err = rp.readLine()
 				if err != nil {
 					return nil, err
-				}
-				if len(line) != 2 {
-					return nil, fmt.Errorf("Bad bulk format")
 				}
 			}
 			break
@@ -148,11 +140,11 @@ func (rp *RedisProtocol) ReadMessage() (*RedisMessage, error) {
 		if inNestedMultiBlock > 0 {
 			inNestedMultiBlock -= 1
 		} else {
-			a := make([]byte, curPart[0].Len())
-			b := make([]byte, curPart[1].Len())
-			curPart[0].Read(a)
-			curPart[1].Read(b)
-			message.Message = append(message.Message, [2][]byte{a, b})
+			header := make([]byte, curPart[0].Len())
+			body := make([]byte, curPart[1].Len())
+			curPart[0].Read(header)
+			curPart[1].Read(body)
+			message.Message = append(message.Message, [2][]byte{header, body})
 			curPart[0].Reset()
 			curPart[1].Reset()
 		}

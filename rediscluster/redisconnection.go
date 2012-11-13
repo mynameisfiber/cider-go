@@ -53,7 +53,6 @@ func (rc *RedisConnection) SelectDb() error {
 		return err
 	}
 
-	log.Printf("Response: %s", response.String())
 	if response.String() != "+OK\r\n" {
 		return fmt.Errorf("Could not switch databases: %s", response.String())
 	}
