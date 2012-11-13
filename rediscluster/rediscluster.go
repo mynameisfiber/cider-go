@@ -78,9 +78,9 @@ func (rc *RedisCluster) GetStatus() int {
 	return -1
 }
 
-func (rc *RedisCluster) Partition(key string) (*RedisShardGroup, uint32) {
-	idx := crc32.ChecksumIEEE([]byte(key)) % uint32(rc.NumShards)
-	return rc.ShardGroups[idx], idx
+func (rc *RedisCluster) Partition(key string) (*RedisShardGroup, int) {
+	idx := crc32.ChecksumIEEE([]byte(key)) % rc.NumShards
+	return rc.ShardGroups[idx], int(idx)
 }
 
 func (rc *RedisCluster) Do(req *RedisMessage) (*RedisMessage, error) {

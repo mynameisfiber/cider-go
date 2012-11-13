@@ -2,7 +2,6 @@ package rediscluster
 
 import (
 	"fmt"
-	"log"
 )
 
 const (
@@ -79,7 +78,7 @@ type RedisShardGroup struct {
 	Status    int
 	NumShards uint32
 
-	readShard   uint32
+	readShard   int
 	initialized bool
 }
 
@@ -146,7 +145,6 @@ func (rsg *RedisShardGroup) Start() int {
 func (rsg *RedisShardGroup) Stop() int {
 	rsg.initialized = false
 	rsg.Status = rsg.GetStatus()
-	log.Println("[group %d] Stopping Shard Group", rsg.Id)
 	return rsg.Status
 }
 
@@ -176,9 +174,9 @@ func (rsg *RedisShardGroup) Do(req *RedisMessage) (*RedisMessage, error) {
 	return nil, fmt.Errorf("Unknown error")
 }
 
-func (rsg *RedisShardGroup) GetNextShard() (*RedisShard, uint32) {
+func (rsg *RedisShardGroup) GetNextShard() (*RedisShard, int) {
 	shard := rsg.Shards[rsg.readShard]
 	index := rsg.readShard
-	rsg.readShard = (rsg.readShard + 1) % rsg.NumShards
+	rsg.readShard = (rsg.readShard + 1) % int(rsg.NumShards)
 	return shard, index
 }

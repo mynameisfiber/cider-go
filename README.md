@@ -16,5 +16,7 @@ In summary, cider-go is awesome and does all the things you wish toast could.
 ## Responses from the community
 
 @dfm - AWWWWWWWWWWWW SHIIIIIIIIIIIIIIIIIIIT
+
 @mreiferson - no way
+
 @mynameisfiber - WIN.

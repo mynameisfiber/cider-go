@@ -34,8 +34,6 @@ func (rc *RedisConnection) Connect() error {
 	if err = rc.SelectDb(); err != nil {
 		log.Printf("Could not change to DB %d: %s", rc.Db, err)
 		return err
-	} else {
-		log.Printf("Connected on %s:%d:%d", rc.Host, rc.Port, rc.Db)
 	}
 
 	return nil
