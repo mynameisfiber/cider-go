@@ -1,2 +1,5 @@
 *.sw[op]
 *.rdb
+redisproxy
+log
+*.pprof

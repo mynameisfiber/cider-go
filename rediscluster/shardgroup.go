@@ -2,7 +2,6 @@ package rediscluster
 
 import (
 	"fmt"
-	"log"
 )
 
 const (
@@ -79,7 +78,7 @@ type RedisShardGroup struct {
 	Status    int
 	NumShards uint32
 
-	readShard   uint32
+	readShard   int
 	initialized bool
 }
 
@@ -110,12 +109,18 @@ func (rsg *RedisShardGroup) GetStatus() int {
 	}
 	allUp, allDown, someDown := true, true, false
 	for _, shard := range rsg.Shards {
-		if shard.Status != REDIS_CONNECTED {
-			shard.Connect()
+		if shard == nil {
+			allUp = false
+			someDown = true
+			allDown = allDown && true
+		} else {
+			if shard.Status != REDIS_CONNECTED {
+				shard.GetStatus()
+			}
+			allUp = allUp && (shard.Status == REDIS_CONNECTED)
+			someDown = someDown || (shard.Status != REDIS_CONNECTED)
+			allDown = allDown && (shard.Status != REDIS_CONNECTED)
 		}
-		allUp = allUp && (shard.Status == REDIS_CONNECTED)
-		someDown = someDown || (shard.Status != REDIS_CONNECTED)
-		allDown = allDown && (shard.Status != REDIS_CONNECTED)
 	}
 	if allUp && !someDown {
 		rsg.Status = GROUP_CONNECTED
@@ -140,20 +145,20 @@ func (rsg *RedisShardGroup) Start() int {
 func (rsg *RedisShardGroup) Stop() int {
 	rsg.initialized = false
 	rsg.Status = rsg.GetStatus()
-	log.Println("[group %d] Stopping Shard Group", rsg.Id)
 	return rsg.Status
 }
 
-func (rsg *RedisShardGroup) Do(cmd string, args ...interface{}) (interface{}, error) {
+func (rsg *RedisShardGroup) Do(req *RedisMessage) (*RedisMessage, error) {
 	if !rsg.initialized {
 		return nil, fmt.Errorf("RedisShardGroup not initialized")
 	}
-	if _, is_write := WRITE_OPERATIONS[cmd]; is_write {
+	// TODO: have WRITE_OPERTIONS be map[[]byte]bool instead of map[string]bool
+	if _, is_write := WRITE_OPERATIONS[req.Command()]; is_write {
 		var finalError, err error
-		var response interface{}
+		var response *RedisMessage
 		for _, shard := range rsg.Shards {
 			// TODO: Right now we only capture the last response and the last error... what is a good fix?
-			response, err = shard.Do(cmd, args...)
+			response, err = shard.Do(req)
 			if err != nil {
 				finalError = err
 			}
@@ -162,15 +167,15 @@ func (rsg *RedisShardGroup) Do(cmd string, args ...interface{}) (interface{}, er
 	} else {
 		// TODO: deal with shards that are down
 		db, _ := rsg.GetNextShard()
-		response, err := db.Do(cmd, args...)
+		response, err := db.Do(req)
 		return response, err
 	}
 	return nil, fmt.Errorf("Unknown error")
 }
 
-func (rsg *RedisShardGroup) GetNextShard() (*RedisShard, uint32) {
+func (rsg *RedisShardGroup) GetNextShard() (*RedisShard, int) {
 	shard := rsg.Shards[rsg.readShard]
 	index := rsg.readShard
-	rsg.readShard = (rsg.readShard + 1) % rsg.NumShards
+	rsg.readShard = (rsg.readShard + 1) % int(rsg.NumShards)
 	return shard, index
 }
