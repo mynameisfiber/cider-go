@@ -19,16 +19,16 @@ In summary, cider-go is awesome and does all the things you wish toast could.
 
 #### Setup
 
-It's easy!  First you have to build the `redisproxy` application by running:
+It's easy!  First you have to build the `cider-go` application by running:
 
 ```
-$ go build redisproxy.go
+$ go build cider-go.go
 ```
 
-And then you're ready to rumble!  If we had 4 redis servers (hostA, hostB, hostC and hostD), all running redis on port 1234, we could start `redisproxy` with the following command:
+And then you're ready to rumble!  If we had 4 redis servers (hostA, hostB, hostC and hostD), all running redis on port 1234, we could start `cider-go` with the following command:
 
 ```
-$ ./redisproxy --redis-group=hostA:1234:1,hostB:1234:1 --redis-group=hostC:1234:1,hostD:1234:1
+$ ./cider-go --redis-group=hostA:1234:1,hostB:1234:1 --redis-group=hostC:1234:1,hostD:1234:1
 ```
 
 This would have our key-space sharded into two groups, each of which is being replicated onto two hosts.  Gets on a key round-robin throughout the responsible group while writes are multicasted.
@@ -36,13 +36,13 @@ This would have our key-space sharded into two groups, each of which is being re
 The configuration you use can be as flexible as you want.  In fact, the previous configuration could be changed to:
 
 ```
-$ ./redisproxy --redis-group=hostA:1234:1,hostB:1234:1,hostC:1234:1,hostD:1234:1 
+$ ./cider-go --redis-group=hostA:1234:1,hostB:1234:1,hostC:1234:1,hostD:1234:1 
 ```
 
 In which case every host has the full dataset and reads are spread out, or
 
 ```
-$ ./redisproxy --redis-group=hostA:1234:1
+$ ./cider-go --redis-group=hostA:1234:1
                --redis-group=hostB:1234:1
                --redis-group=hostC:1234:1
                --redis-group=hostD:1234:1 
@@ -52,9 +52,9 @@ where every host has 25% of the dataset.
 
 #### Usage
 
-Since the `redisproxy` layer understands the redis protocol and acts as a pass-through, nothing special needs to be done in order to use your new ultra-sharded redis cluster.  Simply connect to the `redisproxy` using your usual redis client library and enjoy.  Some caveats are:
+Since the `cider-go` layer understands the redis protocol and acts as a pass-through, nothing special needs to be done in order to use your new ultra-sharded redis cluster.  Simply connect to the `cider-go` using your usual redis client library and enjoy.  Some caveats are:
 
-* You cannot have multiple databases.  This could be fixed in the future by having `redisproxy` prepend keys with a pseudo-database, but it is highly unlikely
+* You cannot have multiple databases.  This could be fixed in the future by having `cider-go` prepend keys with a pseudo-database, but it is highly unlikely
 * Some commands are not supported.  This is mainly because they would not play nicely with keeping all shards in a shard-group synced up.  These commands are:
    * MGET (likely to be supported in the future)
    * MSET (likely to be supported in the future)
@@ -74,7 +74,7 @@ Since the `redisproxy` layer understands the redis protocol and acts as a pass-t
 
 ### As a library
 
-The real core of the `redisproxy` is the `cider-go/rediscluster` library.  It does low level translation of redis requests into their appropriate form for the current cluster configuration.  Simply setup a `RedisCluster` object, filled with the appropriate `RedisShardGroup`s, and you can use `RedisCluster.Do` to send `RedisMessage`s.
+The real core of the `cider-go` is the `cider-go/rediscluster` library.  It does low level translation of redis requests into their appropriate form for the current cluster configuration.  Simply setup a `RedisCluster` object, filled with the appropriate `RedisShardGroup`s, and you can use `RedisCluster.Do` to send `RedisMessage`s.
 
 Please read the (hopefully) provided documentation for more information!
 

@@ -9,11 +9,24 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
-
 	"fmt"
-	"os"
-	"runtime/pprof"
 	"strings"
+
+	//"os"
+	//"runtime/pprof"
+)
+
+const (
+    VERSION = "0.9.2"
+)
+
+var NetAddr string
+var RedisServers RedisServerList
+var redisCluster *rediscluster.RedisCluster
+
+var (
+	Clients = uint64(0)
+	OK      = rediscluster.MessageFromString("+OK\r\n")
 )
 
 type RedisServerList []*rediscluster.RedisShardGroup
@@ -57,15 +70,6 @@ func (rsp *RedisServerList) String() string {
 	return "RedisServerList"
 }
 
-var NetAddr string
-var RedisServers RedisServerList
-var redisCluster *rediscluster.RedisCluster
-
-var (
-	Clients = uint64(0)
-	OK      = rediscluster.MessageFromString("+OK\r\n")
-)
-
 type RedisClient struct {
 	Conn           net.Conn
 	NumRequests    uint64
@@ -86,9 +90,9 @@ func NewRedisClient(conn net.Conn) *RedisClient {
 func (rc *RedisClient) Handle() error {
 	var err error
 
-	f, err := os.Create(fmt.Sprintf("%s.pprof", rc.Conn.RemoteAddr()))
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
+	//f, err := os.Create(fmt.Sprintf("%s.pprof", rc.Conn.RemoteAddr()))
+	//pprof.StartCPUProfile(f)
+	//defer pprof.StopCPUProfile()
 
 	isPipeline := false
 	var pipeline *rediscluster.RedisClusterPipeline
@@ -133,7 +137,13 @@ func (rc *RedisClient) Handle() error {
 func main() {
 	flag.StringVar(&NetAddr, "net-address", ":6543", "Net address that the redis proxy will listen on")
 	flag.Var(&RedisServers, "redis-group", "List of redis shards that form one redundant redis shard-group (may be given multiple times to specify multiple shard-groups)")
+    version := flag.Bool("version", false, "Output version number")
 	flag.Parse()
+
+    if *version {
+        fmt.Printf("redisproxy: Version %s", VERSION)
+        return
+    }
 
 	if len(RedisServers) == 0 {
 		fmt.Println("Missing argument: redis-cluster")

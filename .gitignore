@@ -1,5 +1,5 @@
 *.sw[op]
 *.rdb
-redisproxy
+cider-go
 log
 *.pprof
