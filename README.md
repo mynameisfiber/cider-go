@@ -28,7 +28,7 @@ $ go build cider-go.go
 And then you're ready to rumble!  If we had 4 redis servers (hostA, hostB, hostC and hostD), all running redis on port 1234, we could start `cider-go` with the following command:
 
 ```
-$ ./cider-go --redis-group=hostA:1234:1,hostB:1234:1 --redis-group=hostC:1234:1,hostD:1234:1
+$ ./cider-go --redis-group=hostA:1234,hostB:1234 --redis-group=hostC:1234,hostD:1234
 ```
 
 This would have our key-space sharded into two groups, each of which is being replicated onto two hosts.  Gets on a key round-robin throughout the responsible group while writes are multicasted.
@@ -36,26 +36,25 @@ This would have our key-space sharded into two groups, each of which is being re
 The configuration you use can be as flexible as you want.  In fact, the previous configuration could be changed to:
 
 ```
-$ ./cider-go --redis-group=hostA:1234:1,hostB:1234:1,hostC:1234:1,hostD:1234:1 
+$ ./cider-go --redis-group=hostA:1234,hostB:1234,hostC:1234,hostD:1234
 ```
 
 In which case every host has the full dataset and reads are spread out, or
 
 ```
-$ ./cider-go --redis-group=hostA:1234:1
-               --redis-group=hostB:1234:1
-               --redis-group=hostC:1234:1
-               --redis-group=hostD:1234:1 
+$ ./cider-go --redis-group=hostA:1234
+             --redis-group=hostB:1234
+             --redis-group=hostC:1234
+             --redis-group=hostD:1234 
 ```
 
 where every host has 25% of the dataset.
 
 #### Usage
 
-Since the `cider-go` layer understands the redis protocol and acts as a pass-through, nothing special needs to be done in order to use your new ultra-sharded redis cluster.  Simply connect to the `cider-go` using your usual redis client library and enjoy.  Some caveats are:
+Since the `cider-go` layer understands the redis protocol and acts as a pass-through, nothing special needs to be done in order to use your new ultra-sharded redis cluster.  Simply connect to the `cider-go` using your usual redis client library and enjoy.
 
-* You cannot have multiple databases.  This could be fixed in the future by having `cider-go` prepend keys with a pseudo-database, but it is highly unlikely
-* Some commands are not supported.  This is mainly because they would not play nicely with keeping all shards in a shard-group synced up.  These commands are:
+One caveat is that some commands are not supported.  This is mainly because they would not play nicely with keeping all shards in a shard-group synced up.  These commands are:
    * MGET (likely to be supported in the future)
    * MSET (likely to be supported in the future)
    * SPOP
@@ -63,7 +62,6 @@ Since the `cider-go` layer understands the redis protocol and acts as a pass-thr
    * MOVE
    * RENAMENX
    * SDIFFSTORE
-   * SELECT
    * SINTERSTORE
    * SMOVE
    * SUNION

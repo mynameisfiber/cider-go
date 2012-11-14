@@ -3,21 +3,21 @@ package main
 import (
 	"./rediscluster"
 	"flag"
+	"fmt"
 	"hash/adler32"
 	"log"
 	"net"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
-	"fmt"
-	"strings"
 
 	//"os"
 	//"runtime/pprof"
 )
 
 const (
-    VERSION = "0.9.2"
+	VERSION = "0.9.2"
 )
 
 var NetAddr string
@@ -37,8 +37,8 @@ func (rsl *RedisServerList) Set(s string) error {
 		shardGroup := rediscluster.RedisShardGroup{}
 		for _, shard := range strings.Split(group, ",") {
 			parts := strings.Split(shard, ":")
-			if len(parts) != 3 {
-				return fmt.Errorf("Invalid shard format, must be in host:port:db form: %s", shard)
+			if len(parts) != 2 {
+				return fmt.Errorf("Invalid shard format, must be in host:port form: %s", shard)
 			}
 
 			id := int(adler32.Checksum([]byte(shard)))
@@ -47,12 +47,8 @@ func (rsl *RedisServerList) Set(s string) error {
 			if err != nil {
 				return fmt.Errorf("Could not parse port for shard: %s", shard)
 			}
-			db, err := strconv.Atoi(parts[2])
-			if err != nil {
-				return fmt.Errorf("Could not parse db for shard: %s", shard)
-			}
 
-			s := rediscluster.NewRedisShard(id, host, port, db)
+			s := rediscluster.NewRedisShard(id, host, port)
 			if s == nil {
 				return fmt.Errorf("Could not create shard (probably a connection problem): %s", shard)
 			}
@@ -136,14 +132,14 @@ func (rc *RedisClient) Handle() error {
 
 func main() {
 	flag.StringVar(&NetAddr, "net-address", ":6543", "Net address that the redis proxy will listen on")
-	flag.Var(&RedisServers, "redis-group", "List of redis shards that form one redundant redis shard-group (may be given multiple times to specify multiple shard-groups)")
-    version := flag.Bool("version", false, "Output version number")
+	flag.Var(&RedisServers, "redis-group", "List of redis shards that form one redundant redis shard-group in the form host:port (may be given multiple times to specify multiple shard-groups)")
+	version := flag.Bool("version", false, "Output version number")
 	flag.Parse()
 
-    if *version {
-        fmt.Printf("redisproxy: Version %s", VERSION)
-        return
-    }
+	if *version {
+		fmt.Printf("redisproxy: Version %s", VERSION)
+		return
+	}
 
 	if len(RedisServers) == 0 {
 		fmt.Println("Missing argument: redis-cluster")

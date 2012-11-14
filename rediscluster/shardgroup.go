@@ -20,7 +20,6 @@ var (
 	//  * MOVE
 	//  * RENAMENX
 	//  * SDIFFSTORE
-	//  * SELECT
 	//  * SINTERSTORE
 	//  * SMOVE
 	//  * SUNION
@@ -61,6 +60,7 @@ var (
 		"RPUSHX":           true,
 		"SADD":             true,
 		"SAVE":             true,
+		"SELECT":           true,
 		"SCRIPT":           true,
 		"SHUTDOWN":         true,
 		"SYNC":             true,

@@ -19,11 +19,11 @@ type RedisShard struct {
 	Conn *RedisConnection
 }
 
-func NewRedisShard(id int, host string, port, db int) *RedisShard {
+func NewRedisShard(id int, host string, port int) *RedisShard {
 	var err error
 	rs := RedisShard{Id: id}
 
-	rs.Conn, err = NewRedisConnection(host, port, db)
+	rs.Conn, err = NewRedisConnection(host, port)
 	if err != nil {
 		return nil
 	}
