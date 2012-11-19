@@ -2,6 +2,7 @@ package rediscluster
 
 import (
 	"fmt"
+	"sync"
 )
 
 const (
@@ -17,6 +18,7 @@ type RedisShard struct {
 	LastError error
 
 	Conn *RedisConnection
+	sync.Mutex
 }
 
 func NewRedisShard(id int, host string, port int) *RedisShard {
@@ -64,10 +66,12 @@ func (rs *RedisShard) Do(req *RedisMessage) (*RedisMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	rs.Conn.Lock()
 	_, err = rs.Conn.WriteMessage(req)
 	if err != nil {
 		return nil, err
 	}
+	defer rs.Conn.Unlock()
 	return rs.Conn.ReadMessage()
 }
 
@@ -76,7 +80,9 @@ func (rs *RedisShard) Send(req *RedisMessage) error {
 	if err != nil {
 		return err
 	}
+	rs.Conn.Lock()
 	_, err = rs.Conn.WriteMessage(req)
+	rs.Conn.Unlock()
 	return err
 }
 

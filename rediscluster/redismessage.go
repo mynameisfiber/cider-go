@@ -70,7 +70,7 @@ func (rm *RedisMessage) Length() int {
 
 func MessageFromString(input string) *RedisMessage {
 	message := RedisMessage{}
-	if input[0] == '+' {
+	if input[0] == '+' || input[0] == '-' {
 		message.Message = make([][2][]byte, 1)
 		message.Message[0][0] = []byte(input)
 	} else {

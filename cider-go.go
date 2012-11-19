@@ -4,8 +4,8 @@ import (
 	"./rediscluster"
 	"flag"
 	"fmt"
-	"hash/adler32"
 	"log"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -27,6 +27,7 @@ var redisCluster *rediscluster.RedisCluster
 var (
 	Clients = uint64(0)
 	OK      = rediscluster.MessageFromString("+OK\r\n")
+	ERROR   = rediscluster.MessageFromString("-ERROR\r\n")
 )
 
 type RedisServerList []*rediscluster.RedisShardGroup
@@ -41,7 +42,7 @@ func (rsl *RedisServerList) Set(s string) error {
 				return fmt.Errorf("Invalid shard format, must be in host:port form: %s", shard)
 			}
 
-			id := int(adler32.Checksum([]byte(shard)))
+			id := rand.Intn(8999999) + 1000000
 			host := parts[0]
 			port, err := strconv.Atoi(parts[1])
 			if err != nil {
@@ -53,7 +54,7 @@ func (rsl *RedisServerList) Set(s string) error {
 				return fmt.Errorf("Could not create shard (probably a connection problem): %s", shard)
 			}
 
-			log.Printf("[%d] Added shard: %s", id, shard)
+			log.Printf("[%d] --- Added shard: %s", id, shard)
 			shardGroup.AddShard(s)
 		}
 		shardGroup.Start()
@@ -107,20 +108,26 @@ func (rc *RedisClient) Handle() error {
 		} else {
 			if command == "EXEC" {
 				isPipeline = false
-				response := pipeline.Execute()
-				rc.WriteMessage(response)
+				response, err = pipeline.Execute()
+				if err != nil {
+					log.Printf("Error executing pipeline: %s", err)
+					rc.WriteMessage(ERROR)
+					continue
+				}
 			} else {
 				if isPipeline {
 					response, err = pipeline.Send(request)
 					if err != nil {
-						log.Printf("Error getting response: %s", err)
-						return err
+						log.Printf("Error sending on pipeline: %s", err)
+						rc.WriteMessage(ERROR)
+						continue
 					}
 				} else {
 					response, err = redisCluster.Do(request)
 					if err != nil {
-						log.Printf("Error getting response: %s", err)
-						return err
+						log.Printf("Error from cluster: %s", err)
+						rc.WriteMessage(ERROR)
+						continue
 					}
 				}
 			}

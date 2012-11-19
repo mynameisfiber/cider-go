@@ -7,11 +7,13 @@ import (
 	"io"
 	"log"
 	"strconv"
+	"sync"
 )
 
 type RedisProtocol struct {
 	br *bufio.Reader
 	bw *bufio.Writer
+	sync.Mutex
 }
 
 func NewRedisProtocol(connection io.ReadWriter) *RedisProtocol {
