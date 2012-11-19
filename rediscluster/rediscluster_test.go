@@ -8,12 +8,12 @@ import (
 )
 
 func TestRedisCluster(t *testing.T) {
-	N := 5
+	N := 500
 
-	group1 := NewRedisShardGroup(1, NewRedisShard(1, "127.0.0.1", 6379, 1), NewRedisShard(2, "127.0.0.1", 6379, 2))
-	group2 := NewRedisShardGroup(2, NewRedisShard(3, "127.0.0.1", 6379, 3), NewRedisShard(4, "127.0.0.1", 6379, 4))
-	group3 := NewRedisShardGroup(3, NewRedisShard(5, "127.0.0.1", 6379, 5), NewRedisShard(6, "127.0.0.1", 6379, 6))
-	group4 := NewRedisShardGroup(4, NewRedisShard(8, "127.0.0.1", 6379, 8), NewRedisShard(7, "127.0.0.1", 6379, 7))
+	group1 := NewRedisShardGroup(1, NewRedisShard(1, "127.0.0.1", 6379), NewRedisShard(2, "127.0.0.1", 6379))
+	group2 := NewRedisShardGroup(2, NewRedisShard(3, "127.0.0.1", 6379), NewRedisShard(4, "127.0.0.1", 6379))
+	group3 := NewRedisShardGroup(3, NewRedisShard(5, "127.0.0.1", 6379), NewRedisShard(6, "127.0.0.1", 6379))
+	group4 := NewRedisShardGroup(4, NewRedisShard(8, "127.0.0.1", 6379), NewRedisShard(7, "127.0.0.1", 6379))
 
 	rc := NewRedisCluster(group1, group2, group3, group4)
 
@@ -35,12 +35,12 @@ func TestRedisCluster(t *testing.T) {
 
 	pipeline := rc.Pipeline()
 	for i := 0; i < N; i++ {
-		err := pipeline.Send(MessageFromString(fmt.Sprintf("GET TEST_%d", i)))
+		_, err := pipeline.Send(MessageFromString(fmt.Sprintf("GET TEST_%d", i)))
 		if err != nil {
 			t.Fatalf("Could not send to pipeline: %s: %s", fmt.Sprintf("TEST_%d", i), err)
 		}
 	}
-	result := pipeline.Execute()
+	result, err := pipeline.Execute()
 	mb, err := redis.MultiBulk(result.Bytes(), nil)
 	for i, value := range mb {
 		if err != nil || value != i {
