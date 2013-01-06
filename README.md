@@ -89,6 +89,8 @@ Please read the (hopefully) provided documentation for more information!
 
 @mynameisfiber - WIN.
 
+@rsh - dang, that's fancy.
+
 ## Future
 
 * Fix up all the TODO's
